@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:17
+    container_name: spdb_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bikeuser
+      POSTGRES_PASSWORD: bikepass
+      POSTGRES_DB: bikedb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  app:
+    build:
+      context: ./app
+    container_name: streamlit-app
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://bikeuser:bikepass@db:5432/bikedb
+
+volumes:
+  pgdata:

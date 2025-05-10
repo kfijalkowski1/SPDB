@@ -13,4 +13,4 @@ In this project we use UV !!
 - `uv sync` - sync packages
 - `uv add <name>` - add new package
 - `uv remove <name>` - remove package
-
+- `docker compose up --build` - build and run docker containers
