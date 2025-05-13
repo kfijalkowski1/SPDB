@@ -2,17 +2,16 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:17
+    image: pgrouting/pgrouting:17-3.5-main
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
     container_name: spdb_pg
     restart: unless-stopped
     environment:
-      POSTGRES_USER: bikeuser
-      POSTGRES_PASSWORD: bikepass
-      POSTGRES_DB: bikedb
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
   app:
     build:
@@ -23,8 +22,22 @@ services:
       - "8501:8501"
     depends_on:
       - db
+      - importer
     environment:
-      DATABASE_URL: postgres://bikeuser:bikepass@db:5432/bikedb
+      DATABASE_URL: postgres://bikeuser:bikepass@db:5432/bikedb # todo change this to env var
+
+  importer:
+    build:
+      context: ./db/osm_imports
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    environment:
+      PG_HOST: db
+      PG_PASSWORD: ${POSTGRES_PASSWORD}
+      PG_USER: ${POSTGRES_USER}
+    volumes:
+      - ./data:/data
 
 volumes:
-  pgdata:
+  db-data:

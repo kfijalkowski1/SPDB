@@ -1,0 +1,34 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/26.0.4 Chrome/128.0.6613.186 Electron/32.2.5 Safari/537.36" version="26.0.4">
+  <diagram name="Page-1" id="N9DYpi_B-KtHPWYL-I0I">
+    <mxGraphModel dx="1434" dy="836" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="1pUw_b5q7BtbKw2_6zzk-1" value="Postgres + Postgis" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fontSize=15;" parent="1" vertex="1">
+          <mxGeometry x="330" y="390" width="140" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="1pUw_b5q7BtbKw2_6zzk-4" value="Poland.pbf" style="whiteSpace=wrap;html=1;shape=mxgraph.basic.document;fontSize=15;" parent="1" vertex="1">
+          <mxGeometry x="600" y="500" width="100" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="1pUw_b5q7BtbKw2_6zzk-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;fontSize=15;" parent="1" source="1pUw_b5q7BtbKw2_6zzk-4" target="1pUw_b5q7BtbKw2_6zzk-1" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="570" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="1pUw_b5q7BtbKw2_6zzk-6" value="&lt;font&gt;Load data&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=15;" parent="1pUw_b5q7BtbKw2_6zzk-5" vertex="1" connectable="0">
+          <mxGeometry x="0.05" y="1" relative="1" as="geometry">
+            <mxPoint x="26" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="1pUw_b5q7BtbKw2_6zzk-7" value="Python app" style="whiteSpace=wrap;html=1;aspect=fixed;" parent="1" vertex="1">
+          <mxGeometry x="345" y="240" width="110" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="1pUw_b5q7BtbKw2_6zzk-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;startArrow=classic;startFill=1;" parent="1" source="1pUw_b5q7BtbKw2_6zzk-7" target="1pUw_b5q7BtbKw2_6zzk-1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
