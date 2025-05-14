@@ -24,7 +24,9 @@ services:
       - db
       - importer
     environment:
-      DATABASE_URL: postgres://bikeuser:bikepass@db:5432/bikedb # todo change this to env var
+      PG_HOST: db
+      PG_PASSWORD: ${POSTGRES_PASSWORD}
+      PG_USER: ${POSTGRES_USER}
 
   importer:
     build:
@@ -38,6 +40,23 @@ services:
       PG_USER: ${POSTGRES_USER}
     volumes:
       - ./data:/data
+
+  pgadmin:
+    image: dpage/pgadmin4:9
+    container_name: pgadmin4
+    restart: unless-stopped
+    ports:
+      - "8888:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: root@root.com
+      PGADMIN_DEFAULT_PASSWORD: toor
+      # 30 = warn
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: 30
+      # prevent gunicorn from spamming the logs
+      # https://github.com/docker/compose/issues/8578#issuecomment-945228061
+      GUNICORN_ACCESS_LOGFILE: '/dev/null'
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json
 
 volumes:
   db-data:

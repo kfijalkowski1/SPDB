@@ -8,7 +8,7 @@ export PGPASSWORD
 
 DB_NAME="routing"
 #OSM_FILES=("/data/germany-latest.osm" "/data/poland-latest.osm")
-OSM_FILES=("/data/poland_zach_pom.osm")
+OSM_FILES=("/data/poland-zach-pom.osm")
 
 # Wait for PostgreSQL to start
 until pg_isready -h "$PGHOST" -U "$PGUSER"; do

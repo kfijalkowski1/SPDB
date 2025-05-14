@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
-from engine import generate_path
+from engine import generate_path, get_closest_point, Point, build_route
 
 # Configure page
 st.set_page_config(page_title="Bike Route Planner", layout="wide")
@@ -97,12 +97,14 @@ with right_col:
             if submitted:
                 with st.spinner("Generating optimal route..."):
                     try:
-                        route = generate_path(
+                        route = build_route(
                             start_point=st.session_state.points[0],
                             end_point=st.session_state.points[1],
                             bike_type=bike_type
                         )
-                        st.session_state.route = route
+                        st.session_state.route = [
+                            ((line.lat1, line.lon1), (line.lat2, line.lon2)) for line in route
+                        ]
                         st.success("Route generated successfully!")
                         st.rerun()
                     except Exception as e:
@@ -118,13 +120,15 @@ with right_col:
 
 # Handle map clicks
 if map_data and map_data.get("last_clicked"):
-    click_point = (map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"])
+    click_point = Point(map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"])
+
+    closest_point = get_closest_point(click_point).point
 
     if st.session_state.choose_start:
         if len(st.session_state.points) >= 1:
-            st.session_state.points[0] = click_point
+            st.session_state.points[0] = closest_point
         else:
-            st.session_state.points.insert(0, click_point)
+            st.session_state.points.insert(0, closest_point)
         st.session_state.choose_start = False
         st.session_state.route = None
         st.rerun()
@@ -133,9 +137,9 @@ if map_data and map_data.get("last_clicked"):
         if len(st.session_state.points) == 0:
             st.session_state.points.append((0, 0))  # placeholder
         if len(st.session_state.points) >= 2:
-            st.session_state.points[1] = click_point
+            st.session_state.points[1] = closest_point
         elif len(st.session_state.points) == 1:
-            st.session_state.points.append(click_point)
+            st.session_state.points.append(closest_point)
         st.session_state.choose_end = False
         st.session_state.route = None
         st.rerun()
