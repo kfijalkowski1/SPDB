@@ -29,6 +29,6 @@
 - bidirectional a* >= unidirectional a*
 - idea: if the user picks PoIs beforehand (I think this is what the project assumes), we can parallelize the query by computing paths between N-1 subsequent PoI pairs simultaneously. The more PoI, the better the parallelization. Note that this may speed up the query even further, as with smaller distances we don't need to select such a large ST_BUFFER
   - but what about the order in which PoIs should be visited? Either the user should input it explicitly (easier approach xd) or we should suggest which PoIs can be visited in different order
-    - the latter option could rely on computing all possible paths from A->B in straight lines - 
+    - the latter option could rely on computing all possible paths from A->B over all PoI, assuming paths between PoIs are straight lines - 
       - (n factorial paths! but does this even matter? this is essentially a Hamilton path with explicitly given start and end points. Maybe we can restrict the max route length to reduce the complexity? and / or use floyd-warshall to compute paths?)
     - - and suggesting N shortest paths. In this case, we probably only need to compute a few extra paths between PoI, since the shortest paths are likely to be similar. And again, this can be easily parallelized
