@@ -101,12 +101,12 @@ def _find_path_astar(
     end_point: DbPoint,
 ) -> list[Line]:
     stmt = """
-    SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_astar(
+    SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_bdastar(
         'SELECT gid "id", source, target, cost, reverse_cost, x1, y1, x2, y2
         FROM ways',
         :start_point_id,
         :end_point_id,
-        directed => true
+        directed => true, heuristic => 4
     ) as waypoints
     INNER JOIN ways rd ON waypoints.edge = rd.gid;
     """

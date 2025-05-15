@@ -30,6 +30,7 @@ else
   createdb -U "$PGUSER" -h "$PGHOST" "${DB_NAME}"
   psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -c "CREATE EXTENSION postgis;"
   psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -c "CREATE EXTENSION pgrouting;"
+  psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -c "CREATE EXTENSION hstore;"
 
   # Import OSM files using osm2pgrouting
   for file in "${OSM_FILES[@]}"; do
@@ -38,7 +39,10 @@ else
       -d "${DB_NAME}" \
       -U "$PGUSER" \
       -h "$PGHOST" \
-      -W "$PGPASSWORD"
+      -W "$PGPASSWORD" \
+      -c "/mapconfig_bikes.xml" \
+      --tags \
+      --attributes
   done
 
   echo "Import completed."
