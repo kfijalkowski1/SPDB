@@ -10,7 +10,8 @@ export PGPASSWORD
 
 DB_NAME="routing"
 #OSM_FILES=("/data/germany-latest.osm" "/data/poland-latest.osm")
-OSM_FILES=("/data/poland-zach-pom.osm")
+OSM_FILES=("/data/poland.osm")
+# OSM_FILES=("/data/poland-zach-pom.osm")
 
 # Wait for PostgreSQL to start
 until pg_isready -h "$PGHOST" -U "$PGUSER"; do
@@ -54,12 +55,35 @@ else
         -c "/mapconfig_bikes.xml" \
         --tags \
         --attributes \
+        --no-index
 
       psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -c "ALTER TABLE ways ADD IF NOT EXISTS road_type road_type_enum DEFAULT NULL;"
       psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -c "UPDATE ways SET road_type = '$filter' WHERE road_type IS NULL;"
     done
   done
-  psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -c "ALTER TABLE ways ALTER COLUMN road_type SET NOT NULL;"
+
+  cat <<EOF > post_import.sql
+ALTER TABLE ways ADD PRIMARY KEY (gid);
+ALTER TABLE ways_vertices_pgr ADD PRIMARY KEY (id);
+ALTER TABLE configuration ADD PRIMARY KEY (id);
+ALTER TABLE pointsofinterest ADD PRIMARY KEY (pid);
+
+ALTER TABLE ways ALTER COLUMN road_type SET NOT NULL;
+
+CREATE INDEX ON ways (gid, road_type);
+CREATE INDEX ON ways USING gist (the_geom);
+CREATE INDEX ON ways USING gist( (the_geom::geography) );
+CREATE INDEX ON ways_vertices_pgr USING gist (the_geom);
+CREATE INDEX ON ways_vertices_pgr USING gist( (the_geom::geography) );
+CREATE INDEX ON pointsofinterest USING gist (the_geom);
+CREATE INDEX ON pointsofinterest USING gist( (the_geom::geography) );
+
+VACUUM ANALYZE ways;
+VACUUM ANALYZE ways_vertices_pgr;
+VACUUM ANALYZE pointsofinterest;
+EOF
+
+  psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -f post_import.sql
 
   echo "Import completed."
 fi

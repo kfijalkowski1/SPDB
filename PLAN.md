@@ -34,3 +34,111 @@
     - - and suggesting N shortest paths. In this case, we probably only need to compute a few extra paths between PoI, since the shortest paths are likely to be similar. And again, this can be easily parallelized
 - note for future me: inspect waits in the query! maybe it is not cpu-bound and there are some easy performance gains achievable by tuning postgres
 - what about elevation? do we want to minimise the elevation gain? 
+
+
+
+
+---
+
+
+#######################################################################
+
+Without distance filter:
+
+```sql
+WITH start_point AS (
+    SELECT id
+    FROM ways_vertices_pgr "vert"
+    ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(16.18229464051224, 54.190044572153056), 4326)::geometry ASC
+    LIMIT 1
+), end_point AS (
+    SELECT id
+    FROM ways_vertices_pgr "vert"
+    ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(15.045312226622825, 53.33702543121671), 4326)::geometry ASC
+    LIMIT 1
+)
+
+SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2", the_geom FROM pgr_bdastar(
+	'
+	SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
+	FROM (
+		SELECT 
+			gid "id",
+			source,
+			target,
+			CASE
+				WHEN road_type = ''roads_paved'' THEN 1 * length
+				WHEN road_type = ''roads_unpaved'' THEN 5 * length
+				WHEN road_type = ''roads_unknown_surface'' THEN 5 * length
+				WHEN road_type = ''roads_primary'' THEN 100 * length
+				WHEN road_type = ''roads_secondary'' THEN 20 * length
+				WHEN road_type = ''cycleways'' THEN 0.5 * length
+			END AS "cost",
+			SIGN(reverse_cost) AS sgn,
+			x1, y1, x2, y2
+		FROM ways
+	) AS sq
+	',
+	(SELECT id FROM start_point),
+	(SELECT id FROM end_point),
+	directed => true, heuristic => 4
+) as waypoints
+INNER JOIN ways rd ON waypoints.edge = rd.gid;
+```
+
+#############################################################################
+
+
+With distance filter:
+
+```sql
+WITH start_point AS (
+    SELECT id
+    FROM ways_vertices_pgr "vert"
+    ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(16.18229464051224, 54.190044572153056), 4326)::geometry ASC
+    LIMIT 1
+), end_point AS (
+    SELECT id
+    FROM ways_vertices_pgr "vert"
+    ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(15.045312226622825, 53.33702543121671), 4326)::geometry ASC
+    LIMIT 1
+)
+
+SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2", the_geom FROM pgr_bdastar(
+	'
+	WITH line_ab AS (
+	  SELECT ST_MakeLine(
+	    ST_SetSRID(ST_MakePoint(15.045312226622825, 53.33702543121671), 4326),
+	    ST_SetSRID(ST_MakePoint(16.18229464051224, 54.190044572153056), 4326)
+	  )::geography AS geom
+	)
+	SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
+	FROM (
+		SELECT 
+			gid "id",
+			source,
+			target,
+			CASE
+				WHEN road_type = ''roads_paved'' THEN 1 * length
+				WHEN road_type = ''roads_unpaved'' THEN 5 * length
+				WHEN road_type = ''roads_unknown_surface'' THEN 5 * length
+				WHEN road_type = ''roads_primary'' THEN 100 * length
+				WHEN road_type = ''roads_secondary'' THEN 20 * length
+				WHEN road_type = ''cycleways'' THEN 0.5 * length
+			END AS "cost",
+			SIGN(reverse_cost) AS sgn,
+			x1, y1, x2, y2
+		FROM ways, line_ab
+		WHERE ST_DWithin(
+		  ways.the_geom::geography,
+		  line_ab.geom,
+		  30000
+		)
+	) AS sq
+	',
+	(SELECT id FROM start_point),
+	(SELECT id FROM end_point),
+	directed => true, heuristic => 4
+) as waypoints
+INNER JOIN ways rd ON waypoints.edge = rd.gid;
+```

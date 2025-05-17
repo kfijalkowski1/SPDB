@@ -30,6 +30,5 @@ or surface=dirt
 or surface=earth
 or surface=grass
 or surface=mud
-or surface=sand
 or surface=woodchips
 )

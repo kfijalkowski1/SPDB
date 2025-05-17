@@ -1,13 +1,9 @@
+from enum import Enum
 from typing import NamedTuple
 
 from sqlalchemy import text
 
 from db_utils import session
-
-
-# default SRID for geography is 4326
-# http://postgis.net/docs/using_postgis_dbmanagement.html#PostGIS_Geography
-SRID = 4326
 
 
 class Point(NamedTuple):
@@ -41,6 +37,20 @@ class DbPoint(NamedTuple):
     @property
     def point(self):
         return Point(self.lat, self.lon)
+
+
+class RoadType(Enum):
+    primary = "roads_primary"
+    secondary = "roads_secondary"
+    paved = "roads_paved"
+    unpaved = "roads_unpaved"
+    unknown_surface = "roads_unknown_surface"
+    cycleway = "cycleways"
+
+
+class NoRouteError(ValueError):
+    """Raised when no route is found"""
+    pass
 
 
 def generate_path(start_point: Point, end_point: Point, bike_type, num_points=50):
@@ -97,28 +107,130 @@ def get_closest_point(reference_point: Point) -> DbPoint:
 
 
 def _find_path_astar(
-    start_point: DbPoint,
-    end_point: DbPoint,
+    start_point: Point,
+    end_point: Point,
+    road_type_weights: dict[RoadType, float] | None = None,
+    # note: this will (likely) drastically impact performance
+    dist_filter_meters: float | None = None,
 ) -> list[Line]:
-    stmt = """
-    SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_bdastar(
-        'SELECT gid "id", source, target, cost, reverse_cost, x1, y1, x2, y2
-        FROM ways',
-        :start_point_id,
-        :end_point_id,
-        directed => true, heuristic => 4
-    ) as waypoints
-    INNER JOIN ways rd ON waypoints.edge = rd.gid;
-    """
+    if dist_filter_meters is None:
+        stmt="""
+            WITH start_point AS (
+                SELECT id
+                FROM ways_vertices_pgr "vert"
+                ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326)::geometry ASC
+                LIMIT 1
+            ), end_point AS (
+                SELECT id
+                FROM ways_vertices_pgr "vert"
+                ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)::geometry ASC
+                LIMIT 1
+            )
+
+            SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2", the_geom FROM pgr_bdastar(
+                '
+                SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
+                FROM (
+                    SELECT 
+                        gid "id",
+                        source,
+                        target,
+                        CASE
+                            WHEN road_type = ''roads_paved'' THEN :paved_weight * length
+                            WHEN road_type = ''roads_unpaved'' THEN :unpaved_weight * length
+                            WHEN road_type = ''roads_unknown_surface'' THEN :unknown_surface_weight * length
+                            WHEN road_type = ''roads_primary'' THEN :primary_weight * length
+                            WHEN road_type = ''roads_secondary'' THEN :secondary_weight * length
+                            WHEN road_type = ''cycleways'' THEN :cycleway_weight * length
+                        END AS "cost",
+                        SIGN(reverse_cost) AS sgn,
+                        x1, y1, x2, y2
+                    FROM ways
+                ) AS sq
+                ',
+                (SELECT id FROM start_point),
+                (SELECT id FROM end_point),
+                directed => true, heuristic => 4
+            ) as waypoints
+            INNER JOIN ways rd ON waypoints.edge = rd.gid;
+        """
+    else:
+        stmt = """
+            WITH start_point AS (
+                SELECT id
+                FROM ways_vertices_pgr "vert"
+                ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326)::geometry ASC
+                LIMIT 1
+            ), end_point AS (
+                SELECT id
+                FROM ways_vertices_pgr "vert"
+                ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)::geometry ASC
+                LIMIT 1
+            )
+
+            SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2", the_geom FROM pgr_bdastar(
+                '
+                WITH line_ab AS (
+                    SELECT ST_MakeLine(
+                        ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326),
+                        ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)
+                    )::geography AS geom
+                )
+                SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
+                FROM (
+                    SELECT 
+                        gid "id",
+                        source,
+                        target,
+                        CASE
+                            WHEN road_type = ''roads_paved'' THEN :paved_weight * length
+                            WHEN road_type = ''roads_unpaved'' THEN :unpaved_weight * length
+                            WHEN road_type = ''roads_unknown_surface'' THEN :unknown_surface_weight * length
+                            WHEN road_type = ''roads_primary'' THEN :primary_weight * length
+                            WHEN road_type = ''roads_secondary'' THEN :secondary_weight * length
+                            WHEN road_type = ''cycleways'' THEN :cycleway_weight * length
+                        END AS "cost",
+                        SIGN(reverse_cost) AS sgn,
+                        x1, y1, x2, y2
+                    FROM ways, line_ab
+                    WHERE ST_DWithin(
+                        ways.the_geom::geography,
+                        line_ab.geom,
+                        :dist_filter_meters
+                    )
+                ) AS sq
+                ',
+                (SELECT id FROM start_point),
+                (SELECT id FROM end_point),
+                directed => true, heuristic => 4
+            ) as waypoints
+            INNER JOIN ways rd ON waypoints.edge = rd.gid;
+        """
     
     with session() as db_session:
+        params = {
+            "start_lat": start_point.lat,
+            "start_lon": start_point.lon,
+            "end_lat": end_point.lat,
+            "end_lon": end_point.lon,
+            "paved_weight": road_type_weights.get(RoadType.paved, 1.0),
+            "unpaved_weight": road_type_weights.get(RoadType.unpaved, 1.5),
+            "unknown_surface_weight": road_type_weights.get(RoadType.unknown_surface, 2.0),
+            "primary_weight": road_type_weights.get(RoadType.primary, 1.0),
+            "secondary_weight": road_type_weights.get(RoadType.secondary, 1.5),
+            "cycleway_weight": road_type_weights.get(RoadType.cycleway, 0.5)
+        }
+        if dist_filter_meters is not None:
+            params["dist_filter_meters"] = dist_filter_meters
+        
         result = db_session.execute(
             text(stmt),
-            {
-                "start_point_id": start_point.id,
-                "end_point_id": end_point.id
-            }
+            params
         )
+    
+    if len(result) == 0:
+        raise NoRouteError(f"No route found between {start_point} and {end_point}")
+        
     return [
         Line(
             lat1=row[0],
@@ -131,8 +243,19 @@ def _find_path_astar(
 
 
 def build_route(start_point: Point, end_point: Point, bike_type: str) -> list[Line]:
+    WEIGHTS = {
+        RoadType.primary: 100,
+        RoadType.secondary: 20,
+        RoadType.paved: 1,
+        RoadType.unpaved: 5,
+        RoadType.unknown_surface: 5,
+        RoadType.cycleway: 0.5
+    }
+    
     # TODO closest points can be searched directly in the a* query
-    start_point = get_closest_point(start_point)
-    end_point = get_closest_point(end_point)
-    route = _find_path_astar(start_point, end_point)
+    route = _find_path_astar(
+        start_point=start_point,
+        end_point=end_point,
+        road_type_weights=WEIGHTS
+    )
     return route
