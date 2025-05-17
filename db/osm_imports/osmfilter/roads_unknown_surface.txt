@@ -1,0 +1,18 @@
+--keep=
+(
+highway=path
+or highway=pedestrian
+or highway=footway
+or highway=bridleway
+or highway=track
+or highway=living_street
+or highway=service
+or highway=residential
+or highway=unclassified
+or highway=tertiary_link
+or highway=tertiary
+or highway=services
+or highway=road
+) and (
+surface!=*
+)

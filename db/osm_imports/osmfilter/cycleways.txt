@@ -1,0 +1,45 @@
+--keep=
+(
+highway=cycleway*
+)
+or
+(
+highway=*
+and cycleway=*
+and cycleway!=no
+and cycleway!=separate
+and cycleway!=opposite
+and cycleway!=shoulder
+)
+or
+(
+highway=*
+and cycleway:left=*
+and cycleway:left!=no
+and cycleway:left!=separate
+and cycleway:left!=opposite
+and cycleway:left!=shoulder
+)
+or
+(
+highway=*
+and cycleway:right=*
+and cycleway:right!=no
+and cycleway:right!=separate
+and cycleway:right!=opposite
+and cycleway:right!=shoulder
+)
+or
+(
+highway=*
+and cycleway:both=*
+and cycleway:both!=no
+and cycleway:both!=separate
+and cycleway:both!=opposite
+and cycleway:both!=shoulder
+)
+or
+(
+highway=*
+and segregated=*
+)

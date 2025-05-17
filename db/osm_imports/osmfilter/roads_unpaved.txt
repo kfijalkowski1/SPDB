@@ -1,0 +1,35 @@
+--keep=
+(
+highway=path
+or highway=pedestrian
+or highway=footway
+or highway=bridleway
+or highway=track
+or highway=living_street
+or highway=service
+or highway=residential
+or highway=unclassified
+or highway=tertiary_link
+or highway=tertiary
+or highway=services
+or highway=road
+) and (
+surface=unpaved
+or surface=grass_paver
+or surface=unhewn_cobblestone
+or surface=cobblestone
+or surface=cobblestone:flattened
+or surface=compacted
+or surface=fine_gravel
+or surface=gravel
+or surface=shells
+or surface=rock
+or surface=pebblestone
+or surface=ground
+or surface=dirt
+or surface=earth
+or surface=grass
+or surface=mud
+or surface=sand
+or surface=woodchips
+)

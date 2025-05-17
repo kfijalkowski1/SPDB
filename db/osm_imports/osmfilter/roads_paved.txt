@@ -1,0 +1,32 @@
+--keep=
+(
+highway=path
+or highway=pedestrian
+or highway=footway
+or highway=bridleway
+or highway=track
+or highway=living_street
+or highway=service
+or highway=residential
+or highway=unclassified
+or highway=tertiary_link
+or highway=tertiary
+or highway=services
+or highway=road
+) and (
+surface=paved
+or surface=asphalt
+or surface=concrete
+or surface=chipseal
+or surface=concrete:lanes
+or surface=concrete:plates
+or surface=paving_stones
+or surface=sett 
+or surface=bricks
+or surface=metal
+or surface=metal_grid
+or surface=wood
+or surface=rubber
+or surface=tiles
+or surface=fibre_reinforced_polymer_grate
+)
