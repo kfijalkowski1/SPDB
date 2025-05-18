@@ -1,9 +1,11 @@
 import concurrent.futures
 import itertools
+import math
 from enum import Enum
 from typing import NamedTuple
 
 from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
 
 from db_utils import session
 
@@ -112,9 +114,11 @@ def _find_path_astar(
     end_point: Point,
     road_type_weights: dict[RoadType, float] | None = None,
     # note: this will (likely) drastically impact performance
-    dist_filter_meters: float | None = None,
+    dist_filter_deg: float | None = None,
 ) -> list[Line]:
-    if dist_filter_meters is None:
+    dist_filter_deg = dist_filter_deg or 1
+    
+    if dist_filter_deg is None:
         stmt="""
             WITH start_point AS (
                 SELECT id
@@ -128,7 +132,7 @@ def _find_path_astar(
                 LIMIT 1
             )
 
-            SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2", the_geom FROM pgr_bdastar(
+            SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_bdastar(
                 '
                 SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
                 FROM (
@@ -156,7 +160,23 @@ def _find_path_astar(
             INNER JOIN ways rd ON waypoints.edge = rd.gid;
         """
     else:
-        stmt = """
+        x_a, y_a = start_point.lon, start_point.lat
+        x_b, y_b = end_point.lon, end_point.lat
+        print(x_a, y_a)
+        print(x_b, y_b)
+        factor_a = y_b - y_a
+        factor_b = x_a - x_b
+        factor_c = x_b * y_a - x_a * y_b
+        factor_bott = math.sqrt(factor_a ** 2 + factor_b ** 2)
+        
+        lon_lower_bound = min(start_point.lon, end_point.lon)
+        lon_upper_bound = max(start_point.lon, end_point.lon)
+        lat_lower_bound = min(start_point.lat, end_point.lat)
+        lat_upper_bound = max(start_point.lat, end_point.lat)
+        
+        GRID_SCALE = 100
+        
+        stmt = f"""
             WITH start_point AS (
                 SELECT id
                 FROM ways_vertices_pgr "vert"
@@ -169,14 +189,8 @@ def _find_path_astar(
                 LIMIT 1
             )
 
-            SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2", the_geom FROM pgr_bdastar(
+            SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_bdastar(
                 '
-                WITH line_ab AS (
-                    SELECT ST_MakeLine(
-                        ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326),
-                        ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)
-                    )::geography AS geom
-                )
                 SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
                 FROM (
                     SELECT 
@@ -193,12 +207,12 @@ def _find_path_astar(
                         END AS "cost",
                         SIGN(reverse_cost) AS sgn,
                         x1, y1, x2, y2
-                    FROM ways, line_ab
-                    WHERE ST_DWithin(
-                        ways.the_geom::geography,
-                        line_ab.geom,
-                        :dist_filter_meters
-                    )
+                    FROM ways
+                    WHERE 
+                        (grid_lon BETWEEN (:lon_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lon_upper_bound + :dist_filter_deg) * {GRID_SCALE})
+                        AND (grid_lat BETWEEN (:lat_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lat_upper_bound + :dist_filter_deg) * {GRID_SCALE})
+                        AND ST_Distance(ST_MakePoint(:start_lon, :start_lat), ST_MakePoint(:end_lon, :end_lat)) * 0.3   > abs(:factor_a * grid_lon / {GRID_SCALE} + :factor_b * grid_lat / {GRID_SCALE} + (:factor_c)) / :factor_bott
+                        
                 ) AS sq
                 ',
                 (SELECT id FROM start_point),
@@ -210,19 +224,30 @@ def _find_path_astar(
     
     with session() as db_session:
         params = {
-            "start_lat": start_point.lat,
-            "start_lon": start_point.lon,
-            "end_lat": end_point.lat,
-            "end_lon": end_point.lon,
-            "paved_weight": road_type_weights.get(RoadType.paved, 1.0),
-            "unpaved_weight": road_type_weights.get(RoadType.unpaved, 1.5),
-            "unknown_surface_weight": road_type_weights.get(RoadType.unknown_surface, 2.0),
-            "primary_weight": road_type_weights.get(RoadType.primary, 1.0),
-            "secondary_weight": road_type_weights.get(RoadType.secondary, 1.5),
-            "cycleway_weight": road_type_weights.get(RoadType.cycleway, 0.5)
+            "start_lat": float(start_point.lat),
+            "start_lon": float(start_point.lon),
+            "end_lat": float(end_point.lat),
+            "end_lon": float(end_point.lon),
+            "paved_weight": float(road_type_weights.get(RoadType.paved, 1.0)),
+            "unpaved_weight": float(road_type_weights.get(RoadType.unpaved, 1.5)),
+            "unknown_surface_weight": float(road_type_weights.get(RoadType.unknown_surface, 2.0)),
+            "primary_weight": float(road_type_weights.get(RoadType.primary, 1.0)),
+            "secondary_weight": float(road_type_weights.get(RoadType.secondary, 1.5)),
+            "cycleway_weight": float(road_type_weights.get(RoadType.cycleway, 0.5))
         }
-        if dist_filter_meters is not None:
-            params["dist_filter_meters"] = dist_filter_meters
+        if dist_filter_deg is not None:
+            params["dist_filter_deg"] = float(dist_filter_deg)
+            params["factor_bott"] = float(factor_bott)
+            params["factor_a"] = float(factor_a)
+            params["factor_b"] = float(factor_b)
+            params["factor_c"] = float(factor_c)
+            params["lon_lower_bound"] = float(lon_lower_bound)
+            params["lon_upper_bound"] = float(lon_upper_bound)
+            params["lat_lower_bound"] = float(lat_lower_bound)
+            params["lat_upper_bound"] = float(lat_upper_bound)
+        
+        compiled = text(stmt).bindparams(**params).compile(dialect=postgresql.dialect(),compile_kwargs={"literal_binds": True})
+        print(compiled, flush=True)
         
         result = db_session.execute(
             text(stmt),

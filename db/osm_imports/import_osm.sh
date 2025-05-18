@@ -78,6 +78,13 @@ CREATE INDEX ON ways_vertices_pgr USING gist( (the_geom::geography) );
 CREATE INDEX ON pointsofinterest USING gist (the_geom);
 CREATE INDEX ON pointsofinterest USING gist( (the_geom::geography) );
 
+UPDATE ways SET grid_lat=round(ST_Y(ST_SnapToGrid(ST_Centroid(the_geom), 0.2, 0.16)) * 100)::numeric;
+UPDATE ways SET grid_lon=round(ST_X(ST_SnapToGrid(ST_Centroid(the_geom), 0.2, 0.16)) * 100)::numeric;
+ALTER TABLE ways ALTER COLUMN grid_lon SET NOT NULL;
+ALTER TABLE ways ALTER COLUMN grid_lat SET NOT NULL;
+CREATE INDEX ON ways (grid_lat);
+CREATE INDEX ON ways (grid_lon);
+
 VACUUM ANALYZE ways;
 VACUUM ANALYZE ways_vertices_pgr;
 VACUUM ANALYZE pointsofinterest;
