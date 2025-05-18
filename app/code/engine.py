@@ -113,114 +113,97 @@ def _find_path_astar(
     start_point: Point,
     end_point: Point,
     road_type_weights: dict[RoadType, float] | None = None,
-    # note: this will (likely) drastically impact performance
-    dist_filter_deg: float | None = None,
 ) -> list[Line]:
-    dist_filter_deg = dist_filter_deg or 1
+
+    x_a, y_a = start_point.lon, start_point.lat
+    x_b, y_b = end_point.lon, end_point.lat
+    print(x_a, y_a)
+    print(x_b, y_b)
+    factor_a = y_b - y_a
+    factor_b = x_a - x_b
+    factor_c = x_b * y_a - x_a * y_b
+    factor_bott = math.sqrt(factor_a ** 2 + factor_b ** 2)
     
-    if dist_filter_deg is None:
-        stmt="""
-            WITH start_point AS (
-                SELECT id
-                FROM ways_vertices_pgr "vert"
-                ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326)::geometry ASC
-                LIMIT 1
-            ), end_point AS (
-                SELECT id
-                FROM ways_vertices_pgr "vert"
-                ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)::geometry ASC
-                LIMIT 1
-            )
+    lon_lower_bound = min(start_point.lon, end_point.lon)
+    lon_upper_bound = max(start_point.lon, end_point.lon)
+    lat_lower_bound = min(start_point.lat, end_point.lat)
+    lat_upper_bound = max(start_point.lat, end_point.lat)
+    
+    ab_dist = math.sqrt((x_a - x_b) ** 2 + (y_a - y_b) ** 2)
 
-            SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_bdastar(
-                '
-                SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
-                FROM (
-                    SELECT 
-                        gid "id",
-                        source,
-                        target,
-                        CASE
-                            WHEN road_type = ''roads_paved'' THEN :paved_weight * length
-                            WHEN road_type = ''roads_unpaved'' THEN :unpaved_weight * length
-                            WHEN road_type = ''roads_unknown_surface'' THEN :unknown_surface_weight * length
-                            WHEN road_type = ''roads_primary'' THEN :primary_weight * length
-                            WHEN road_type = ''roads_secondary'' THEN :secondary_weight * length
-                            WHEN road_type = ''cycleways'' THEN :cycleway_weight * length
-                        END AS "cost",
-                        SIGN(reverse_cost) AS sgn,
-                        x1, y1, x2, y2
-                    FROM ways
-                ) AS sq
-                ',
-                (SELECT id FROM start_point),
-                (SELECT id FROM end_point),
-                directed => true, heuristic => 4
-            ) as waypoints
-            INNER JOIN ways rd ON waypoints.edge = rd.gid;
-        """
-    else:
-        x_a, y_a = start_point.lon, start_point.lat
-        x_b, y_b = end_point.lon, end_point.lat
-        print(x_a, y_a)
-        print(x_b, y_b)
-        factor_a = y_b - y_a
-        factor_b = x_a - x_b
-        factor_c = x_b * y_a - x_a * y_b
-        factor_bott = math.sqrt(factor_a ** 2 + factor_b ** 2)
-        
-        lon_lower_bound = min(start_point.lon, end_point.lon)
-        lon_upper_bound = max(start_point.lon, end_point.lon)
-        lat_lower_bound = min(start_point.lat, end_point.lat)
-        lat_upper_bound = max(start_point.lat, end_point.lat)
-        
-        GRID_SCALE = 100
-        
-        stmt = f"""
-            WITH start_point AS (
-                SELECT id
-                FROM ways_vertices_pgr "vert"
-                ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326)::geometry ASC
-                LIMIT 1
-            ), end_point AS (
-                SELECT id
-                FROM ways_vertices_pgr "vert"
-                ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)::geometry ASC
-                LIMIT 1
-            )
+    # gradually decrease from ~3.1 over very short distances to ~0.3 over long distances
+    dist_filter_relative = 4.3 - 4 / (1 + math.exp(-3.5 * ab_dist + 1))
+    # minimum value has to be introduced since grid has limited resolution and would otherwise return no points when querying
+    # over very short distances
+    dist_filter_deg = max(ab_dist * dist_filter_relative, 0.5)
+    
+    GRID_SCALE = 100
+    
+    # Alright, why does this even work
+    # We employ two filters to reduce the number of ways returned by the inner query without sacrificing performance
+    # We intentionally refer to grid_lon and grid_lat: plain integer values, essentially (lat|lon) * 100 rounded to the nearest integer
+    # The first filter is a bounding box filter, which only selects ways that are within a bounding box defined by the start and end points + some margin
+    # The second filter selects ways that are within a certain distance from the line defined by the start and end points
+    # Instead of using ST_DWithin which is very compute-heavy, we use a linear equation to filter the ways:
+    #  - First, we compute the line equation of the line defined by the start and end points (referred to as "a" and "b"):
+    #     y = (y_b - y_a) / (x_b - x_a) * x + (y_b - y_a) / (x_b - x_a) * x_a * y_a
+    #  - Or in other words:
+    #     lat = (lat_b - lat_a) / (lon_b - lon_a) * lon + (lat_b - lat_a) / (lon_b - lon_a) * lon_a * lat_a
+    #  - After some transformations we get:
+    #     (lat_b - lat_a) * lon + (lon_a - lon_b) * lat + lon_b * lat_a - lon_a * lat_b = 0
+    #  - Notice that:
+    #     factor_a = (lat_b - lat_a)
+    #     factor_b = (lon_a - lon_b)
+    #     factor_c = (lon_b * lat_a - lon_a * lat_b)
+    #  - Now we can compute the distance of a point (grid_lon, grid_lat) to the line defined by the start and end points:
+    #     dist = abs(factor_a * grid_lon + factor_b * grid_lat + factor_c) / sqrt(factor_a ** 2 + factor_b ** 2)
+    #  - The rest is just transformations to reduce tha number of computations that postgres has to make when filtering the ways
+    
+    stmt = f"""
+        WITH start_point AS (
+            SELECT id
+            FROM ways_vertices_pgr "vert"
+            ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326)::geometry ASC
+            LIMIT 1
+        ), end_point AS (
+            SELECT id
+            FROM ways_vertices_pgr "vert"
+            ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)::geometry ASC
+            LIMIT 1
+        )
 
-            SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_bdastar(
-                '
-                SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
-                FROM (
-                    SELECT 
-                        gid "id",
-                        source,
-                        target,
-                        CASE
-                            WHEN road_type = ''roads_paved'' THEN :paved_weight * length
-                            WHEN road_type = ''roads_unpaved'' THEN :unpaved_weight * length
-                            WHEN road_type = ''roads_unknown_surface'' THEN :unknown_surface_weight * length
-                            WHEN road_type = ''roads_primary'' THEN :primary_weight * length
-                            WHEN road_type = ''roads_secondary'' THEN :secondary_weight * length
-                            WHEN road_type = ''cycleways'' THEN :cycleway_weight * length
-                        END AS "cost",
-                        SIGN(reverse_cost) AS sgn,
-                        x1, y1, x2, y2
-                    FROM ways
-                    WHERE 
-                        (grid_lon BETWEEN (:lon_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lon_upper_bound + :dist_filter_deg) * {GRID_SCALE})
-                        AND (grid_lat BETWEEN (:lat_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lat_upper_bound + :dist_filter_deg) * {GRID_SCALE})
-                        AND ST_Distance(ST_MakePoint(:start_lon, :start_lat), ST_MakePoint(:end_lon, :end_lat)) * 0.3   > abs(:factor_a * grid_lon / {GRID_SCALE} + :factor_b * grid_lat / {GRID_SCALE} + (:factor_c)) / :factor_bott
-                        
-                ) AS sq
-                ',
-                (SELECT id FROM start_point),
-                (SELECT id FROM end_point),
-                directed => true, heuristic => 4
-            ) as waypoints
-            INNER JOIN ways rd ON waypoints.edge = rd.gid;
-        """
+        SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_bdastar(
+            '
+            SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
+            FROM (
+                SELECT 
+                    gid "id",
+                    source,
+                    target,
+                    CASE
+                        WHEN road_type = ''roads_paved'' THEN :paved_weight * length
+                        WHEN road_type = ''roads_unpaved'' THEN :unpaved_weight * length
+                        WHEN road_type = ''roads_unknown_surface'' THEN :unknown_surface_weight * length
+                        WHEN road_type = ''roads_primary'' THEN :primary_weight * length
+                        WHEN road_type = ''roads_secondary'' THEN :secondary_weight * length
+                        WHEN road_type = ''cycleways'' THEN :cycleway_weight * length
+                    END AS "cost",
+                    SIGN(reverse_cost) AS sgn,
+                    x1, y1, x2, y2
+                FROM ways
+                WHERE 
+                    (grid_lon BETWEEN (:lon_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lon_upper_bound + :dist_filter_deg) * {GRID_SCALE})
+                    AND (grid_lat BETWEEN (:lat_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lat_upper_bound + :dist_filter_deg) * {GRID_SCALE})
+                    AND (:dist_filter_deg * :factor_bott - (:factor_c)) * {GRID_SCALE} > :factor_a * grid_lon + :factor_b * grid_lat
+                    AND (- (:dist_filter_deg * :factor_bott) - (:factor_c)) * {GRID_SCALE} < :factor_a * grid_lon + :factor_b * grid_lat
+            ) AS sq
+            ',
+            (SELECT id FROM start_point),
+            (SELECT id FROM end_point),
+            directed => true, heuristic => 4
+        ) as waypoints
+        INNER JOIN ways rd ON waypoints.edge = rd.gid;
+    """
     
     with session() as db_session:
         params = {
@@ -233,18 +216,17 @@ def _find_path_astar(
             "unknown_surface_weight": float(road_type_weights.get(RoadType.unknown_surface, 2.0)),
             "primary_weight": float(road_type_weights.get(RoadType.primary, 1.0)),
             "secondary_weight": float(road_type_weights.get(RoadType.secondary, 1.5)),
-            "cycleway_weight": float(road_type_weights.get(RoadType.cycleway, 0.5))
+            "cycleway_weight": float(road_type_weights.get(RoadType.cycleway, 0.5)),
+            "dist_filter_deg": float(dist_filter_deg),
+            "factor_bott": float(factor_bott),
+            "factor_a": float(factor_a),
+            "factor_b": float(factor_b),
+            "factor_c": float(factor_c),
+            "lon_lower_bound": float(lon_lower_bound),
+            "lon_upper_bound": float(lon_upper_bound),
+            "lat_lower_bound": float(lat_lower_bound),
+            "lat_upper_bound": float(lat_upper_bound)
         }
-        if dist_filter_deg is not None:
-            params["dist_filter_deg"] = float(dist_filter_deg)
-            params["factor_bott"] = float(factor_bott)
-            params["factor_a"] = float(factor_a)
-            params["factor_b"] = float(factor_b)
-            params["factor_c"] = float(factor_c)
-            params["lon_lower_bound"] = float(lon_lower_bound)
-            params["lon_upper_bound"] = float(lon_upper_bound)
-            params["lat_lower_bound"] = float(lat_lower_bound)
-            params["lat_upper_bound"] = float(lat_upper_bound)
         
         compiled = text(stmt).bindparams(**params).compile(dialect=postgresql.dialect(),compile_kwargs={"literal_binds": True})
         print(compiled, flush=True)

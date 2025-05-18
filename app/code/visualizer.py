@@ -102,7 +102,7 @@ with right_col:
         st.rerun()
 
 # Handle map clicks
-if map_data and map_data.get("last_clicked"):
+if map_data and map_data.get("last_clicked") and st.session_state.choosing_point_idx is not None:
     click_point = Point(map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"])
 
     closest_point = get_closest_point(click_point).point
