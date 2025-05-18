@@ -7,9 +7,9 @@ from engine import generate_path, get_closest_point, Point, build_route
 st.set_page_config(page_title="Bike Route Planner", layout="wide")
 
 # Initialize session state
-for key in ['points', 'route', 'choose_start', 'choose_end']:
+for key in ['points', 'route', 'choosing_point_idx']:
     if key not in st.session_state:
-        st.session_state[key] = None if key == 'route' else []
+        st.session_state[key] = None if key in ('route', 'choosing_point_idx') else []
 
 # Page header
 st.title("Bike Route Planner - Poland")
@@ -23,10 +23,19 @@ with left_col:
 
     # Add markers
     for idx, point in enumerate(st.session_state.points):
+        if idx == 0:
+            color = 'green'
+            tooltip = "Start Point"
+        elif idx == len(st.session_state.points) - 1:
+            color = 'red'
+            tooltip = "End Point"
+        else:
+            color = 'orange'
+            tooltip = f"Stop {idx + 1}"
         folium.Marker(
             location=point,
-            icon=folium.Icon(color='red' if idx == 0 else 'green'),
-            tooltip=f"{'Start' if idx == 0 else 'End'} Point"
+            icon=folium.Icon(color=color),
+            tooltip=tooltip
         ).add_to(m)
 
     if st.session_state.route:
@@ -47,45 +56,21 @@ with left_col:
 
 with right_col:
     st.subheader("Selection Status")
-
-    # Start Point
-    st.markdown("**Start Point:**")
-    if len(st.session_state.points) > 0:
-        st.write(st.session_state.points[0])
+    
+    for i, point in enumerate(st.session_state.points):
+        st.write(point)
         col1, col2 = st.columns(2)
-        if col1.button("Choose Start"):
-            st.session_state.choose_start = True
-            st.session_state.choose_end = False
-        if col2.button("Delete Start"):
-            st.session_state.points.pop(0)
-            st.session_state.route = None
+        if col1.button("Choose again", key=f"choose_again_{i}"):
+            st.session_state.choosing_point_idx = i
+        if col2.button("Delete point", key=f"delete_point_{i}"):
+            st.session_state.points.pop(i)
             st.rerun()
-    else:
-        st.write("Not selected")
-        if st.button("Choose Start"):
-            st.session_state.choose_start = True
-            st.session_state.choose_end = False
-
-    # End Point
-    st.markdown("**End Point:**")
-    if len(st.session_state.points) > 1:
-        st.write(st.session_state.points[1])
-        col1, col2 = st.columns(2)
-        if col1.button("Choose End"):
-            st.session_state.choose_end = True
-            st.session_state.choose_start = False
-        if col2.button("Delete End"):
-            st.session_state.points.pop(1)
-            st.session_state.route = None
-            st.rerun()
-    else:
-        st.write("Not selected")
-        if st.button("Choose End"):
-            st.session_state.choose_end = True
-            st.session_state.choose_start = False
+    st.markdown("---")
+    if st.button("Add point"):
+        st.session_state.choosing_point_idx = len(st.session_state.points)
 
     # Route generation form
-    if len(st.session_state.points) == 2:
+    if len(st.session_state.points) >= 2:
         with st.form("route_config"):
             st.subheader("Route Configuration")
             bike_type = st.selectbox(
@@ -114,8 +99,7 @@ with right_col:
     if st.button("Clear All Selections"):
         st.session_state.points = []
         st.session_state.route = None
-        st.session_state.choose_start = False
-        st.session_state.choose_end = False
+        st.session_state.choosing_point_idx = None
         st.rerun()
 
 # Handle map clicks
@@ -123,24 +107,15 @@ if map_data and map_data.get("last_clicked"):
     click_point = Point(map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"])
 
     closest_point = get_closest_point(click_point).point
-
-    if st.session_state.choose_start:
-        if len(st.session_state.points) >= 1:
-            st.session_state.points[0] = closest_point
-        else:
-            st.session_state.points.insert(0, closest_point)
-        st.session_state.choose_start = False
+    
+    if st.session_state.choosing_point_idx >= len(st.session_state.points):
+        st.session_state.points.append(closest_point)
+        st.session_state.choosing_point_idx = None
         st.session_state.route = None
         st.rerun()
-
-    elif st.session_state.choose_end:
-        if len(st.session_state.points) == 0:
-            st.session_state.points.append((0, 0))  # placeholder
-        if len(st.session_state.points) >= 2:
-            st.session_state.points[1] = closest_point
-        elif len(st.session_state.points) == 1:
-            st.session_state.points.append(closest_point)
-        st.session_state.choose_end = False
+    else:
+        st.session_state.points[st.session_state.choosing_point_idx] = closest_point
+        st.session_state.choosing_point_idx = None
         st.session_state.route = None
         st.rerun()
 
