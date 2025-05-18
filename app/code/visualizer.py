@@ -83,8 +83,7 @@ with right_col:
                 with st.spinner("Generating optimal route..."):
                     try:
                         route = build_route(
-                            start_point=st.session_state.points[0],
-                            end_point=st.session_state.points[1],
+                            points=st.session_state.points,
                             bike_type=bike_type
                         )
                         st.session_state.route = [

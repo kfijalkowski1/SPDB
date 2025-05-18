@@ -1,3 +1,5 @@
+import concurrent.futures
+import itertools
 from enum import Enum
 from typing import NamedTuple
 
@@ -243,7 +245,9 @@ def _find_path_astar(
     return rows
 
 
-def build_route(start_point: Point, end_point: Point, bike_type: str) -> list[Line]:
+def build_route(points: list[Point], bike_type: str) -> list[Line]:
+    # todo compute based on bike type
+    # lower weight <=> higher preference
     WEIGHTS = {
         RoadType.primary: 3,
         RoadType.secondary: 1.5,
@@ -252,11 +256,26 @@ def build_route(start_point: Point, end_point: Point, bike_type: str) -> list[Li
         RoadType.unknown_surface: 2,
         RoadType.cycleway: 0.5
     }
+
+    assert len(points) >= 2, f"build_route requires at least 2 points, got {len(points)}"
     
-    # TODO closest points can be searched directly in the a* query
-    route = _find_path_astar(
-        start_point=start_point,
-        end_point=end_point,
-        road_type_weights=WEIGHTS
-    )
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        segments_to_future = {
+            (s_start, s_end): executor.submit(
+                _find_path_astar,
+                start_point=s_start,
+                end_point=s_end,
+                road_type_weights=WEIGHTS
+            )
+            for s_start, s_end in itertools.pairwise(points)
+        }
+    
+    route = []
+    for i, ((s_start, s_end), future) in enumerate(segments_to_future.items(), start=1):
+        try:
+            segment = future.result()
+            route.extend(segment)
+        except NoRouteError as e:
+            print(f"Error finding route between points {i} -> {i+1} {s_start} and {s_end}: {e}")
+            raise e
     return route
