@@ -27,6 +27,8 @@ services:
       PG_HOST: db
       PG_PASSWORD: ${POSTGRES_PASSWORD}
       PG_USER: ${POSTGRES_USER}
+    volumes:
+      - ./app/code:/app/code
 
   importer:
     build:

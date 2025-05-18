@@ -33,10 +33,17 @@
       - (n factorial paths! but does this even matter? this is essentially a Hamilton path with explicitly given start and end points. Maybe we can restrict the max route length to reduce the complexity? and / or use floyd-warshall to compute paths?)
     - - and suggesting N shortest paths. In this case, we probably only need to compute a few extra paths between PoI, since the shortest paths are likely to be similar. And again, this can be easily parallelized
 - note for future me: inspect waits in the query! maybe it is not cpu-bound and there are some easy performance gains achievable by tuning postgres
-- what about elevation? do we want to minimise the elevation gain? 
+- what about elevation? do we want to minimize the elevation gain? 
 
 
+################
 
+- Problem: to much data goes into the algorithm and slows it down
+- We cannot simply compute ST_Within, with each edge from the straight line between A and B, it takes 3x more time than the actual A*
+- Optimization 1:
+  - Divide the map into a grid based on lat and lon, assign each way to a block, compute ST_Withing with grid blocks, then only query ways in selected blocks - much fewer predicates to compute
+- Optimization 2:
+  - Select intermediate points (how??) and route between them, parallelizing the query
 
 ---
 

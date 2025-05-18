@@ -76,7 +76,7 @@ def get_closest_points(reference_point: Point, n: int) -> list[DbPoint]:
     stmt = """
     SELECT id, osm_id, lat, lon, the_geom
     FROM ways_vertices_pgr "vert"
-    ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), :srid)::geometry ASC
+    ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geometry ASC
     LIMIT :n
     """
 
@@ -86,7 +86,6 @@ def get_closest_points(reference_point: Point, n: int) -> list[DbPoint]:
             {
                 "lat": reference_point.lat,
                 "lon": reference_point.lon,
-                "srid": SRID,
                 "n": n
             }
         )
@@ -228,10 +227,7 @@ def _find_path_astar(
             params
         )
     
-    if len(result) == 0:
-        raise NoRouteError(f"No route found between {start_point} and {end_point}")
-        
-    return [
+    rows = [
         Line(
             lat1=row[0],
             lon1=row[1],
@@ -240,15 +236,20 @@ def _find_path_astar(
         )
         for row in result
     ]
+    
+    if len(rows) == 0:
+        raise NoRouteError(f"No route found between {start_point} and {end_point}")
+        
+    return rows
 
 
 def build_route(start_point: Point, end_point: Point, bike_type: str) -> list[Line]:
     WEIGHTS = {
-        RoadType.primary: 100,
-        RoadType.secondary: 20,
+        RoadType.primary: 3,
+        RoadType.secondary: 1.5,
         RoadType.paved: 1,
-        RoadType.unpaved: 5,
-        RoadType.unknown_surface: 5,
+        RoadType.unpaved: 2,
+        RoadType.unknown_surface: 2,
         RoadType.cycleway: 0.5
     }
     
