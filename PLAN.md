@@ -40,10 +40,16 @@
 
 - Problem: to much data goes into the algorithm and slows it down
 - We cannot simply compute ST_Within, with each edge from the straight line between A and B, it takes 3x more time than the actual A*
-- Optimization 1:
+- Optimization 1  (implemented!):
   - Divide the map into a grid based on lat and lon, assign each way to a block, compute ST_Withing with grid blocks, then only query ways in selected blocks - much fewer predicates to compute
 - Optimization 2:
   - Select intermediate points (how??) and route between them, parallelizing the query
+
+################
+
+Turns out we cannot simply `osm2pgrouting` each road type as a separate imports, since every import will create it's own subgraph and prevent routing between subgraphs. We need to import osm files using `osm2pgsql` and then manually crate a routing topology:
+- https://workshop.pgrouting.org/2.5/en/chapters/topology.html
+
 
 ---
 
