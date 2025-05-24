@@ -107,6 +107,8 @@ if map_data and map_data.get("last_clicked") and st.session_state.choosing_point
 
     closest_point = get_closest_point(click_point).point
     
+    assert closest_point is not None, "No closest point found"
+    
     if st.session_state.choosing_point_idx >= len(st.session_state.points):
         st.session_state.points.append(closest_point)
         st.session_state.choosing_point_idx = None

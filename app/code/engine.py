@@ -30,7 +30,7 @@ class Line(NamedTuple):
 
 class DbPoint(NamedTuple):
     id: int
-    osm_id: int
+    # osm_id: int
     lat: float
     lon: float
     geom: str
@@ -78,7 +78,7 @@ def get_closest_points(reference_point: Point, n: int) -> list[DbPoint]:
     
     # note lat and lon are swapped!
     stmt = """
-    SELECT id, osm_id, lat, lon, the_geom
+    SELECT id, lat, lon, the_geom
     FROM ways_vertices_pgr "vert"
     ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geometry ASC
     LIMIT :n
@@ -96,10 +96,10 @@ def get_closest_points(reference_point: Point, n: int) -> list[DbPoint]:
     return [
         DbPoint(
             id=row[0],
-            osm_id=row[1],
-            lat=row[2],
-            lon=row[3],
-            geom=row[4]
+            # osm_id=row[1],
+            lat=row[1],
+            lon=row[2],
+            geom=row[3]
         )
         for row in result
     ]

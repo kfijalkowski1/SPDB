@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     postgresql-client \
     osmctools \
+    osm2pgsql \
     && apt-get clean
 
 # Copy entrypoint script

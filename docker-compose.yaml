@@ -7,11 +7,13 @@ services:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/postgresql.conf
     container_name: spdb_pg
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    entrypoint: ["docker-entrypoint.sh", "postgres", "-c", "config_file=/postgresql.conf"]
 
   app:
     build:
