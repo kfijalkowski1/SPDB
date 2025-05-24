@@ -9,7 +9,6 @@ PGPASSWORD=${PG_PASSWORD:-bikepass}
 export PGPASSWORD
 
 DB_NAME="routing"
-#OSM_FILES=("/data/germany-latest.osm" "/data/poland-latest.osm")
 # OSM_FILES=("/data/poland.osm")
 OSM_FILES=("/data/poland-zach-pom.osm")
 # OSM_FILES=("/data/poland-maz.osm")
@@ -143,5 +142,3 @@ EOF
 fi
 
 # We should now have a routing topology with no disconnected edges or vertices and all roads classified by type.
-
-sleep infinity # workaround for no init containers in docker compose :(
