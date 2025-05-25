@@ -1,0 +1,69 @@
+--keep=
+(
+cycleway=track
+or cycleway=lane
+or cycleway=opposite_lane
+or cycleway=opposite
+or cycleway=shared_lane
+or cycleway=shared
+or cycleway=share_busway
+)
+or
+(
+cycleway:right=track
+or cycleway:right=lane
+or cycleway:right=opposite_lane
+or cycleway:right=opposite
+or cycleway:right=shared_lane
+or cycleway:right=shared
+or cycleway:right=share_busway
+)
+or
+(
+cycleway:left=track
+or cycleway:left=lane
+or cycleway:left=opposite_lane
+or cycleway:left=opposite
+or cycleway:left=shared_lane
+or cycleway:left=shared
+or cycleway:left=share_busway
+)
+or
+(
+cycleway:both=track
+or cycleway:both=lane
+or cycleway:both=opposite_lane
+or cycleway:both=opposite
+or cycleway:both=shared_lane
+or cycleway:both=shared
+or cycleway:both=share_busway
+)
+or
+(
+tracktype=grade1
+or tracktype=grade2
+or tracktype=grade3
+or tracktype=grade4
+or tracktype=grade5
+)
+or
+(
+highway=cycleway
+or highway=path
+or highway=pedestrian
+or highway=footway
+or highway=bridleway
+or highway=track
+or highway=living_street
+or highway=service
+or highway=residential
+or highway=unclassified
+or highway=tertiary_link
+or highway=tertiary
+or highway=services
+or highway=secondary_link
+or highway=secondary
+or highway=primary_link
+or highway=primary
+or highway=road
+)

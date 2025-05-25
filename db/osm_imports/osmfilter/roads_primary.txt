@@ -1,0 +1,5 @@
+--keep=
+(
+highway=primary_link
+or highway=primary
+)
