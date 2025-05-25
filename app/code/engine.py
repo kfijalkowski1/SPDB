@@ -135,7 +135,11 @@ def _find_path_astar(
     dist_filter_relative = 4.3 - 4 / (1 + math.exp(-3.5 * ab_dist + 1))
     # minimum value has to be introduced since grid has limited resolution and would otherwise return no points when querying
     # over very short distances
-    dist_filter_deg = max(ab_dist * dist_filter_relative, 0.5)
+    
+    MIN_DIST_FILTER_DEG = 0.5
+    MAX_DIST_FILTER_DEG = 3.0
+    
+    dist_filter_deg = min(max(ab_dist * dist_filter_relative, MIN_DIST_FILTER_DEG), MAX_DIST_FILTER_DEG)
     
     GRID_SCALE = 100
     
@@ -234,7 +238,7 @@ def _find_path_astar(
         result = db_session.execute(
             text(stmt),
             params
-        )
+        ).fetchall()
     
     rows = [
         Line(

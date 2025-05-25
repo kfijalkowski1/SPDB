@@ -10,8 +10,27 @@ export PGPASSWORD
 
 DB_NAME="routing"
 # OSM_FILES=("/data/poland.osm")
-OSM_FILES=("/data/poland-zach-pom.osm")
-# OSM_FILES=("/data/poland-maz.osm")
+# OSM_FILES=("/data/poland-zachodniopomorskie.osm")
+# OSM_FILES=("/data/poland-mazowieckie.osm")
+
+OSM_FILES=(
+  "/data/poland-dolnoslaskie.osm"
+  "/data/poland-kujawsko-pomorskie.osm"
+  "/data/poland-lubelskie.osm"
+  "/data/poland-lubuskie.osm"
+  "/data/poland-lodzkie.osm"
+  "/data/poland-malopolskie.osm"
+  "/data/poland-mazowieckie.osm"
+  "/data/poland-opolskie.osm"
+  "/data/poland-podkarpackie.osm"
+  "/data/poland-podlaskie.osm"
+  "/data/poland-pomorskie.osm"
+  "/data/poland-slaskie.osm"
+  "/data/poland-swietokrzyskie.osm"
+  "/data/poland-warminsko-mazurskie.osm"
+  "/data/poland-wielkopolskie.osm"
+  "/data/poland-zachodniopomorskie.osm"
+)
 
 # Wait for PostgreSQL to start
 until pg_isready -h "$PGHOST" -U "$PGUSER"; do
@@ -37,17 +56,21 @@ else
     echo "Processing $source_file..."
 
     # Load all acceptable road types (mapconfig_bikes.xml) and create routing topology 
-    osm2pgrouting -f "$source_file" \
+    # TODO add osmfilter to select only roads with tags that are relevant for routing to avoid loading 700.000.000 ways into ram
+    osmfilter $source_file "--parameter-file=/osmfilter/all.txt" > "all_filtered.osm"
+    osm2pgrouting -f "all_filtered.osm" \
       -d "${DB_NAME}" \
       -U "$PGUSER" \
       -h "$PGHOST" \
       -W "$PGPASSWORD" \
       -c "/mapconfig_bikes.xml" \
       --tags \
-      --attributes
+      --attributes \
+      --no-index \
+      --chunk 100000
 
     # Add road type
-    psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -c "ALTER TABLE ways ADD COLUMN road_type road_type_enum DEFAULT NULL;"
+    psql -U "$PGUSER" -h "$PGHOST" -d "${DB_NAME}" -c "ALTER TABLE ways ADD COLUMN IF NOT EXISTS road_type road_type_enum DEFAULT NULL;"
 
     for filter in "roads_primary" "roads_secondary" "roads_paved" "roads_unpaved" "cycleways"; do
       # for every filter file: get matching OSM roads, import to DB and set road_type on the ways table based on osm_id
@@ -55,7 +78,7 @@ else
       FILTERED_OSM_FILE="${filter}_filtered.osm"
 
       echo "Importing $filter from $source_file..."
-      osmfilter $source_file "--parameter-file=$PARAMS_FILE" > "$FILTERED_OSM_FILE"
+      osmfilter all_filtered.osm "--parameter-file=$PARAMS_FILE" > "$FILTERED_OSM_FILE"
 
       osm2pgsql -U "$PGUSER"  -H "$PGHOST" --create -d "${DB_NAME}" --latlong --cache 12000 --cache-strategy sparse "$FILTERED_OSM_FILE"
 
@@ -70,6 +93,15 @@ else
   done
 
   cat <<EOF > post_import.sql
+-- this is what osm2pgrouting does unless --no-index is specified
+ALTER TABLE ways ADD PRIMARY KEY (gid);
+ALTER TABLE ways_vertices_pgr ADD PRIMARY KEY (id);
+ALTER TABLE configuration ADD PRIMARY KEY (id);
+ALTER TABLE pointsofinterest ADD PRIMARY KEY (pid);
+CREATE INDEX ON ways USING gist (the_geom);
+CREATE INDEX ON ways_vertices_pgr USING gist (the_geom);
+CREATE INDEX ON pointsofinterest USING gist (the_geom);
+
 ALTER TABLE ways ALTER COLUMN road_type SET NOT NULL;
 
 -- find isolated vertices and edges

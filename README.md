@@ -2,7 +2,9 @@
 
 Repository for project being made for SPDB (in WUT uni) course
 
-## Prerequisites
+## Running the service
+
+### Prerequisites
 
 In this project we use UV !!
 
@@ -18,7 +20,7 @@ just setup
 just download-data
 ```
 
-## Run the service
+### Run the service
 
 Run with auto reload:
 
@@ -32,12 +34,21 @@ Note that the `importer` service will in `Waiting` state until it finishes impor
 docker compose logs --follow importer
 ```
 
-## Accessing the service
+### Note on importing routes
+
+This is both a compute-heavy and memory-heavy operation. Ensure you have plenty of RAM (32 is the minimum) and time. On an i7 8700 with 32GB of RAM importing the entire Poland takes roughly 1h 45min and requires swapping (at least that's what I saw - even though the actual RAM usage was not that high, all RAM was used by buffered pages which OS refused to clean up, hence swapping was needed). **If you only need a single voivodeship, limit the number of files loaded in [import_osm.sh](db/osm_imports/import_osm.sh)**. 
+
+Loading the entire topology is likely a good idea when testing performance-related changes, as fully populated tables contain approximately 11.7mln edges and 9mln vertices and PostgreSQL will sometimes perform sequential scans over both of these tables (try finding a route from Rzeszów to Szczecin without doing a sequential scan!).
+
+### Accessing the service
 
 - The app is running at `localhost:8501`
 - PgAdmin4 is running at `localhost:8888` (username root@root.com, password toor)
 
-## Useful commands
+
+## Development
+
+### Useful commands
 
 - `uv run streamlit run code/visualizer.py` - run front locally
 - `uv sync` - sync packages
@@ -46,7 +57,7 @@ docker compose logs --follow importer
 - `docker compose up --build --env-file .env` - build and run docker containers -- parsing xml to db for the first time might take a while
 - `apt install osmctools` -- needed for parsing osm.pbf to osm
 
-## Notes
+### Notes
 
 ~~Don't try to import whole poland - it's too big and there is mem overflow in osm2pgrouting~~
 
