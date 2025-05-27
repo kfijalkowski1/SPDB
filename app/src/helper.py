@@ -8,7 +8,7 @@ def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
 
     for point in points:
         current_segment.append(point)
-        if point.type == "sleep" and len(current_segment) > 1:
+        if point.type == "sleep":
             segments.append(current_segment)
             current_segment = [point]  # start next day from this sleep point
 

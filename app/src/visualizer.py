@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
-from engine import generate_path, get_closest_point, Point, build_route
+from engine import generate_path, get_closest_point, Point, build_route, build_routes_multiple
 from poi_suggester import suggest_pois, get_route_bounds, suggest_sleeping_places
 from helper import split_route_by_sleeping_points, fake_distance_for_segment, find_nearby
 from itertools import cycle
@@ -139,11 +139,12 @@ with config_col:
                             full_route = []
                             segment_routes = []
                             route_segments = []
-                            for idx, segment in enumerate(segment_points):
-                                seg_route = build_route(segment, bike_type)
+                            
+                            full_route_segments = build_routes_multiple(segment_points, bike_type)
+                            for idx, seg_route in enumerate(full_route_segments):
                                 segment_routes.append(seg_route)
                                 full_route.extend([((line.lat1, line.lon1), (line.lat2, line.lon2)) for line in seg_route])
-                                route_segments.append((f"Day {idx + 1}", fake_distance_for_segment(segment)))
+                                route_segments.append((f"Day {idx + 1}", fake_distance_for_segment(seg_route)))
 
                             st.session_state.route = full_route
                             st.session_state.segment_routes = segment_routes

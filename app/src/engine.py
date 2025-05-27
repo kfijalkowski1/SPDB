@@ -293,3 +293,23 @@ def build_route(points: list[Point], bike_type: str) -> list[Line]:
             print(f"Error finding route between points {i} -> {i+1} {s_start} and {s_end}: {e}")
             raise e
     return route
+
+
+def build_routes_multiple(segments: list[list[Point]], bike_type: str) -> list[list[Line]]:
+    """Build routes for multiple segments"""
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = {
+            executor.submit(build_route, segment, bike_type): segment
+            for segment in segments
+        }
+    
+    results = []
+    for future in concurrent.futures.as_completed(futures):
+        segment = futures[future]
+        try:
+            route = future.result()
+            results.append(route)
+        except NoRouteError as e:
+            print(f"Error building route for segment {segment}: {e}")
+            raise e
+    return results

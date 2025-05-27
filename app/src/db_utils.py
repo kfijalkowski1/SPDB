@@ -14,11 +14,11 @@ load_dotenv(find_dotenv())
 def _get_db_url() -> URL:
     return URL.create(
         drivername="postgresql+psycopg2",
-        username=os.environ["PG_USER"],
-        password=os.environ["PG_PASSWORD"],
-        host=os.environ["PG_HOST"],
-        port=int(os.getenv("PG_PORT", 5432)),
-        database=os.getenv("PG_DATABASE", "routing")
+        username=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+        host=os.environ["POSTGRES_HOST"],
+        port=int(os.getenv("POSTGRES_PORT", 5432)),
+        database=os.getenv("POSTGRES_DATABASE", "routing")
     )
 
 
