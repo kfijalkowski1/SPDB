@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import concurrent.futures
 import itertools
 import math
@@ -29,9 +31,10 @@ class Line(NamedTuple):
 class Route(NamedTuple):
     start: Point
     end: Point
-    length_m: float
     geojson: str
     geom: str
+    length_m: float
+    length_m_road_types: dict[RoadType, float]
 
 
 class DbPoint(NamedTuple):
@@ -46,6 +49,15 @@ class DbPoint(NamedTuple):
 
 
 class RoadType(Enum):
+    primary = "roads_primary"
+    secondary = "roads_secondary"
+    paved = "roads_paved"
+    unpaved = "roads_unpaved"
+    unknown_surface = "roads_unknown_surface"
+    cycleway = "cycleways"
+
+
+class BikeType(Enum):
     primary = "roads_primary"
     secondary = "roads_secondary"
     paved = "roads_paved"
@@ -148,7 +160,18 @@ def _find_path_astar(
 
 
     stmt = f"""
-SELECT ST_AsGeoJSON(ST_LineMerge(ST_Collect(sq.geom))) "geojson", ST_LineMerge(ST_Collect(sq.geom)) "geom", sum(sq.length_m) "length_m"
+SELECT 
+	ST_AsGeoJSON(ST_LineMerge(ST_Collect(sq.geom))) "geojson",
+	ST_LineMerge(ST_Collect(sq.geom)) "geom",
+	sum(sq.length_m) "length_m",
+    json_build_object(
+        'roads_paved', sum(CASE WHEN road_type = 'roads_paved' THEN length_m ELSE 0 END),
+        'roads_unpaved', sum(CASE WHEN road_type = 'roads_unpaved' THEN length_m ELSE 0 END),
+        'roads_primary', sum(CASE WHEN road_type = 'roads_primary' THEN length_m ELSE 0 END),
+        'roads_secondary', sum(CASE WHEN road_type = 'roads_secondary' THEN length_m ELSE 0 END),
+        'roads_unknown_surface', sum(CASE WHEN road_type = 'roads_unknown_surface' THEN length_m ELSE 0 END),
+        'cycleways', sum(CASE WHEN road_type = 'cycleways' THEN length_m ELSE 0 END)
+    ) "length_m_road_types"
 FROM (
     WITH start_point AS (
         SELECT id
@@ -162,7 +185,7 @@ FROM (
         LIMIT 1
     )
 
-	SELECT ST_Length(the_geom::geography) "length_m", ST_AsGeoJSON(the_geom) "geojson", the_geom "geom" FROM pgr_bdastar(
+	SELECT ST_Length(the_geom::geography) "length_m", ST_AsGeoJSON(the_geom) "geojson", the_geom "geom", road_type "road_type" FROM pgr_bdastar(
         '
         SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
         FROM (
@@ -235,7 +258,8 @@ FROM (
         end=end_point,
         length_m=result[2],
         geojson=result[0],
-        geom=result[1]
+        geom=result[1],
+        length_m_road_types=result[3]
     )
 
 def build_route(points: list[Point], bike_type: str) -> list[Route]:

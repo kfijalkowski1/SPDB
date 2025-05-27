@@ -3,10 +3,12 @@ import streamlit as st
 from streamlit_extras.stylable_container import stylable_container  # type: ignore[import-untyped]
 from streamlit_folium import st_folium  # type: ignore[import-untyped]
 import folium
-from src.engine import get_closest_point, Point, build_routes_multiple
+from src.engine import get_closest_point, Point, build_routes_multiple, RoadType
 from src.poi_suggester import suggest_pois, get_max_bounds_from_routes, suggest_sleeping_places
 from src.helper import split_route_by_sleeping_points, find_nearby
 from itertools import cycle
+import plotly.express as px  # type: ignore[import-untyped]
+from typing import OrderedDict
 
 # Configure page
 st.set_page_config(page_title="Bike Route Planner", layout="wide")
@@ -15,7 +17,7 @@ st.set_page_config(page_title="Bike Route Planner", layout="wide")
 for key in [
     'points', 'route', 'segment_routes', 'route_segments',
     'choosing_point_idx', 'suggested_pois', 'selected_pois',
-    'suggested_sleeping', 'selected_sleeping'
+    'suggested_sleeping', 'selected_sleeping', 'road_type_to_distance'
 ]:
     if key not in st.session_state:
         if key in ('route', 'segment_routes', 'route_segments', 'choosing_point_idx', 'suggested_pois', 'suggested_sleeping'):
@@ -77,12 +79,6 @@ with map_col:
                     data=route.geojson,
                     name=f"Segment {len(st.session_state.segment_routes)}"
                 ).add_to(m)
-            # folium.PolyLine(
-            #     locations=[(line.lat1, line.lon1) for line in segment_route] + [(segment_route[-1].lat2, segment_route[-1].lon2)],
-            #     color=color,
-            #     weight=5,
-            #     opacity=0.8
-            # ).add_to(m)
 
     if st.session_state.suggested_pois:
         for poi in st.session_state.suggested_pois:
@@ -103,12 +99,78 @@ with map_col:
     map_data = st_folium(m, width=800, height=600, returned_objects=["last_clicked"])
 
     if st.session_state.route_segments:
-        with st.expander("Daily Route Lengths", expanded=True):
-            total_distance = 0
-            for label, dist in st.session_state.route_segments:
-                st.write(f"{label}: {dist / 1000:.2f}km")
-                total_distance += dist
-            st.write(f"**Total Distance:** {total_distance / 1000:.2f}km")
+        total_days = max(len(st.session_state.route_segments), st.session_state.trip_days)
+        m_per_day = st.session_state.daily_m
+        
+        distance_by_day = {
+            label: dist for label, dist in st.session_state.route_segments
+        } | {
+            f"Day {i + 1}": 0 for i in range(len(st.session_state.route_segments), total_days)
+        }
+        total_distance = sum(distance_by_day.values())
+        
+        st.write(f"### Total Distance: {total_distance / 1000:.2f} km")
+        st.write(f"Estimated time: 21:37 h")
+        
+        cols = st.columns([1, 1], vertical_alignment='center')
+        
+        with cols[0]:
+            days_data = [
+                {
+                    'Day': f"Day {i}",
+                    'Distance': dist / 1000
+                }
+                for i, (_, dist) in enumerate(distance_by_day.items(), start=1) if dist > 0
+            ]
+            fig = px.pie(days_data, values='Distance', names='Day', 
+                title="Distance by days", hole=0.7, category_orders={'Day': [f"Day {i}" for i in range(1, total_days + 1)]})
+            st.plotly_chart(fig, use_container_width=True)
+        with cols[1]:
+            st.table(
+                {
+                    "Day": [f"Day {i}" for i in range(1, len(distance_by_day) + 1)],
+                    "Distance (km)": [f"{round(dist / 1000, 2)} km " for dist in distance_by_day.values()],
+                    "Plan": [f"{round((abs(dist - m_per_day)) / 1000, 2)} km " + (f"ahead of plan" if dist > m_per_day else "behind plan") for dist in distance_by_day.values()],
+                    "Est. time": [f"21:37 h" for dist in distance_by_day.values()]
+                }
+            )
+
+        distance_by_road_type = {v.value: 0 for v in RoadType}
+        for segment in st.session_state.segment_routes:
+            for route in segment:
+                for road_type, distance in route.length_m_road_types.items():
+                    distance_by_road_type[road_type] += distance
+        
+        cols = st.columns([1, 1], vertical_alignment='center')
+        
+        with cols[0]:
+            name_mapping  = OrderedDict(**{
+                RoadType.primary.value: "Primary",
+                RoadType.secondary.value: "Secondary",
+                RoadType.paved.value: "Paved",
+                RoadType.unpaved.value: "Unpaved",
+                RoadType.cycleway.value: "Cycleway",
+                RoadType.unknown_surface.value: "Unknown Surface",
+            })
+            road_type_data = [
+                {
+                    'Road Type': name_mapping[road_type],
+                    'Distance (km)': distance_by_road_type[road_type] / 1000
+                }
+                for road_type in name_mapping.keys() if distance_by_road_type[road_type] > 0
+            ]
+            
+            fig = px.pie(road_type_data, values='Distance (km)', names='Road Type', 
+                title="Distance by road types", hole=0.7, category_orders={'Road Type': list(name_mapping.values())})
+            st.plotly_chart(fig, use_container_width=True)
+        with cols[1]:
+            st.table(
+                {
+                    "Road Type": list(name_mapping.values()),
+                    "Share": [f"{round(distance_by_road_type[road_type] * 100 / total_distance, 2)} %" for road_type in name_mapping.keys()],
+                    "Distance": [f"{round(distance_by_road_type[road_type] / 1000, 2)} km" for road_type in name_mapping.keys()]
+                }
+            )
 
 # --- Config Column ---
 with config_col:
