@@ -28,7 +28,7 @@ def suggest_pois(bbox: tuple[float, float, float, float], n: int = 5) -> list[Po
 
     return list(pois)
 
-def suggest_sleeping_places(bbox: tuple[float, float, float, float], n: int = 3) -> list[Point]:
+def suggest_sleeping_places(bbox: tuple[float, float, float, float], n: int = 5) -> list[Point]:
     min_lat, min_lon, max_lat, max_lon = bbox
     sleep_points: set[Point] = set()
     attempts = 0

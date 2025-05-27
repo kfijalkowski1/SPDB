@@ -209,10 +209,17 @@ with config_col:
                             st.session_state.segment_routes = segment_routes
                             st.session_state.route_segments = route_segments
 
-                            bbox = get_max_bounds_from_routes([r for seg in segment_routes for r in seg])
-                            st.session_state.suggested_pois = suggest_pois(bbox)
+                            pois_bbox = get_max_bounds_from_routes([r for seg in segment_routes for r in seg])
+                            st.session_state.suggested_pois = suggest_pois(pois_bbox)
                             st.session_state.selected_pois = set()
-                            st.session_state.suggested_sleeping = suggest_sleeping_places(bbox)
+                            last_point = segment_points[-1][-1]
+                            SLEEP_SEARCH_RADIUS_DEG = 0.1
+                            sleep_bbox = (
+                                float(last_point.lat) - SLEEP_SEARCH_RADIUS_DEG,
+                                float(last_point.lon) - SLEEP_SEARCH_RADIUS_DEG,
+                                float(last_point.lat) + SLEEP_SEARCH_RADIUS_DEG,
+                                float(last_point.lon) + SLEEP_SEARCH_RADIUS_DEG)
+                            st.session_state.suggested_sleeping = suggest_sleeping_places(sleep_bbox)
                             st.session_state.selected_sleeping = set()
 
                             st.success("Route generated successfully!")
