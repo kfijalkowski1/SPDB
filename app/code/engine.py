@@ -13,6 +13,8 @@ from db_utils import session
 class Point(NamedTuple):
     lat: float
     lon: float
+    short_desc: str = "Default Point"
+    type: str = None
     
     def __str__(self):
         return f"({self.lat}, {self.lon})"
@@ -162,7 +164,8 @@ def _find_path_astar(
     #  - Now we can compute the distance of a point (grid_lon, grid_lat) to the line defined by the start and end points:
     #     dist = abs(factor_a * grid_lon + factor_b * grid_lat + factor_c) / sqrt(factor_a ** 2 + factor_b ** 2)
     #  - The rest is just transformations to reduce tha number of computations that postgres has to make when filtering the ways
-    
+
+
     stmt = f"""
         WITH start_point AS (
             SELECT id
