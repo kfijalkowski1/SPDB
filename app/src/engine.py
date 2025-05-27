@@ -25,6 +25,7 @@ class Line(NamedTuple):
     lon1: float
     lat2: float
     lon2: float
+    length_m: float
     
     def __str__(self):
         return f"({self.lat1}, {self.lon1}) -> ({self.lat2}, {self.lon2})"
@@ -179,7 +180,7 @@ def _find_path_astar(
             LIMIT 1
         )
 
-        SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2" FROM pgr_bdastar(
+        SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2", ST_Length(the_geom::geography) "length_m", the_geom "geometry" FROM pgr_bdastar(
             '
             SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
             FROM (
@@ -248,7 +249,8 @@ def _find_path_astar(
             lat1=row[0],
             lon1=row[1],
             lat2=row[2],
-            lon2=row[3]
+            lon2=row[3],
+            length_m=row[4]
         )
         for row in result
     ]
@@ -296,7 +298,6 @@ def build_route(points: list[Point], bike_type: str) -> list[Line]:
 
 
 def build_routes_multiple(segments: list[list[Point]], bike_type: str) -> list[list[Line]]:
-    """Build routes for multiple segments"""
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = {
             executor.submit(build_route, segment, bike_type): segment

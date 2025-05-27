@@ -1,9 +1,11 @@
 import streamlit as st
+import streamlit_extras as ste
+from streamlit_extras.stylable_container import stylable_container
 from streamlit_folium import st_folium
 import folium
-from engine import generate_path, get_closest_point, Point, build_route, build_routes_multiple
+from engine import generate_path, get_closest_point, Point, build_routes_multiple
 from poi_suggester import suggest_pois, get_route_bounds, suggest_sleeping_places
-from helper import split_route_by_sleeping_points, fake_distance_for_segment, find_nearby
+from helper import split_route_by_sleeping_points, find_nearby
 from itertools import cycle
 
 # Configure page
@@ -32,7 +34,7 @@ with st.sidebar:
     bike_type = st.selectbox("Bike Type", ["Road Bike", "Mountain Bike", "Hybrid Bike", "Electric Bike"], index=0)
 
     st.session_state.trip_days = trip_days
-    st.session_state.daily_km = daily_km
+    st.session_state.daily_m = daily_km * 1000
 
 # Main layout
 map_col, config_col = st.columns([2, 1])
@@ -99,9 +101,9 @@ with map_col:
         with st.expander("Daily Route Lengths", expanded=True):
             total_distance = 0
             for label, dist in st.session_state.route_segments:
-                st.write(f"{label}: {dist} km")
+                st.write(f"{label}: {dist / 1000:.2f}km")
                 total_distance += dist
-            st.write(f"**Total Distance:** {total_distance} km")
+            st.write(f"**Total Distance:** {total_distance / 1000:.2f}km")
 
 # --- Config Column ---
 with config_col:
@@ -109,24 +111,79 @@ with config_col:
 
     with tab1:
         st.subheader("Route Points")
+        if len(st.session_state.points) == 0:
+            st.info('Start your next big journey! Click "Add point" to select a point on the map.')
+        
         for i, point in enumerate(st.session_state.points):
-            st.write(f"**{point.short_desc}**")
-            cols = st.columns([1, 1, 2, 1])
-            if cols[0].button("↑", key=f"move_up_{i}") and i > 0:
-                st.session_state.points[i - 1], st.session_state.points[i] = st.session_state.points[i], st.session_state.points[i - 1]
-                st.rerun()
-            if cols[1].button("↓", key=f"move_down_{i}") and i < len(st.session_state.points) - 1:
-                st.session_state.points[i + 1], st.session_state.points[i] = st.session_state.points[i], st.session_state.points[i + 1]
-                st.rerun()
-            if cols[2].button("Choose again", key=f"choose_again_{i}"):
-                st.session_state.choosing_point_idx = i
-            if cols[3].button("Delete", key=f"delete_point_{i}"):
-                st.session_state.points.pop(i)
-                st.rerun()
+            cols = st.columns([0.8, 1.3, 10, 5], vertical_alignment="center")
+            with cols[0]:
+                with stylable_container(
+                    key=f"points_number_{i}",
+                    css_styles="""
+                    h4{
+                        margin-bottom: 5px;
+                    }
+                    """
+                ):
+                    st.write(f"#### {i + 1}.")
+            with cols[1]:
+                with stylable_container(
+                    key=f"point_actions_left_{i}",
+                    css_styles="""
+                    button{
+                        float: left;
+                        margin-bottom: 10px;
+                    }
+                    """
+                ):
+                    if st.button("↑", key=f"move_up_{i}") and i > 0:
+                        st.session_state.points[i - 1], st.session_state.points[i] = st.session_state.points[i], st.session_state.points[i - 1]
+                        st.rerun()
+                    if st.button("↓", key=f"move_down_{i}") and i < len(st.session_state.points) - 1:
+                        st.session_state.points[i + 1], st.session_state.points[i] = st.session_state.points[i], st.session_state.points[i + 1]
+                        st.rerun()
+            with cols[2]:
+                st.write(f"##### {point.short_desc}")
+                st.write(f"`{point.lat:.5f}, {point.lon:.5f}`")
+            with cols[3]:
+                with stylable_container(
+                    key=f"point_actions_right_{i}",
+                    css_styles="""
+                    button{
+                        float: right;
+                        margin-bottom: 10px;
+                    }
+                    """
+                ):
+                    if st.button("Choose again", key=f"choose_again_{i}"):
+                        st.session_state.choosing_point_idx = i
+                    if st.button("Delete", key=f"delete_point_{i}"):
+                        st.session_state.points.pop(i)
+                        st.rerun()
 
         st.markdown("---")
-        if st.button("Add point"):
-            st.session_state.choosing_point_idx = len(st.session_state.points)
+        cols = st.columns([1, 1])
+        with cols[0]:
+            if st.button("Add point"):
+                st.session_state.choosing_point_idx = len(st.session_state.points)
+        with cols[1]:
+            with stylable_container(
+                key=f"clear_all_selections_style",
+                css_styles="""
+                button{
+                    float: right;
+                }
+                """
+            ):
+                if st.button("Clear All Selections"):
+                    for key in ['points', 'route', 'segment_routes', 'route_segments', 'choosing_point_idx', 'suggested_pois', 'selected_pois', 'suggested_sleeping', 'selected_sleeping']:
+                        if isinstance(st.session_state[key], list):
+                            st.session_state[key] = []
+                        elif isinstance(st.session_state[key], set):
+                            st.session_state[key] = set()
+                        else:
+                            st.session_state[key] = None
+                    st.rerun()
 
         if len(st.session_state.points) >= 2:
             with st.form("route_config"):
@@ -144,7 +201,7 @@ with config_col:
                             for idx, seg_route in enumerate(full_route_segments):
                                 segment_routes.append(seg_route)
                                 full_route.extend([((line.lat1, line.lon1), (line.lat2, line.lon2)) for line in seg_route])
-                                route_segments.append((f"Day {idx + 1}", fake_distance_for_segment(seg_route)))
+                                route_segments.append((f"Day {idx + 1}", sum([line.length_m for line in seg_route])))
 
                             st.session_state.route = full_route
                             st.session_state.segment_routes = segment_routes
@@ -161,15 +218,6 @@ with config_col:
                         except Exception as e:
                             st.error(f"Error generating route: {str(e)}")
 
-        if st.button("Clear All Selections"):
-            for key in ['points', 'route', 'segment_routes', 'route_segments', 'choosing_point_idx', 'suggested_pois', 'selected_pois', 'suggested_sleeping', 'selected_sleeping']:
-                if isinstance(st.session_state[key], list):
-                    st.session_state[key] = []
-                elif isinstance(st.session_state[key], set):
-                    st.session_state[key] = set()
-                else:
-                    st.session_state[key] = None
-            st.rerun()
 
     with tab2:
         if st.session_state.suggested_pois:
@@ -215,7 +263,7 @@ if map_data and map_data.get("last_clicked"):
     # Handle user point placement
     if st.session_state.choosing_point_idx is not None:
         db_point = get_closest_point(Point(*click_latlon))
-        desc = f"User Point {len(st.session_state.points) + 1}"
+        desc = f"Waypoint #{len(st.session_state.points) + 1}"
         closest_point = Point(db_point.lat, db_point.lon, desc)
 
         if st.session_state.choosing_point_idx >= len(st.session_state.points):

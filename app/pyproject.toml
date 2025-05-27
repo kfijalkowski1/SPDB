@@ -12,6 +12,7 @@ dependencies = [
     "python-dotenv>=1.1.0",
     "sqlalchemy>=2.0.41",
     "streamlit>=1.45.0",
+    "streamlit-extras>=0.7.1",
     "streamlit-folium>=0.25.0",
     "streamlit-modal>=0.1.2",
     "streamlit-option-menu>=0.4.0",

@@ -17,10 +17,6 @@ def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
 
     return segments
 
-
-def fake_distance_for_segment(segment: list[Point]) -> float:
-    return round(random.uniform(25.0, 60.0), 2)  # kilometers
-
 def find_nearby(click_latlon, candidates, max_meters=10000):
     for obj in candidates:
         obj_latlon = (obj.lat, obj.lon)
