@@ -1,11 +1,11 @@
+import traceback
 import streamlit as st
-import streamlit_extras as ste
-from streamlit_extras.stylable_container import stylable_container
-from streamlit_folium import st_folium
+from streamlit_extras.stylable_container import stylable_container  # type: ignore[import-untyped]
+from streamlit_folium import st_folium  # type: ignore[import-untyped]
 import folium
-from engine import generate_path, get_closest_point, Point, build_routes_multiple
-from poi_suggester import suggest_pois, get_route_bounds, suggest_sleeping_places
-from helper import split_route_by_sleeping_points, find_nearby
+from src.engine import get_closest_point, Point, build_routes_multiple
+from src.poi_suggester import suggest_pois, get_max_bounds_from_routes, suggest_sleeping_places
+from src.helper import split_route_by_sleeping_points, find_nearby
 from itertools import cycle
 
 # Configure page
@@ -72,12 +72,17 @@ with map_col:
         color_cycle = cycle(["blue", "green", "orange", "red", "purple"])
         for segment_route in st.session_state.segment_routes:
             color = next(color_cycle)
-            folium.PolyLine(
-                locations=[(line.lat1, line.lon1) for line in segment_route] + [(segment_route[-1].lat2, segment_route[-1].lon2)],
-                color=color,
-                weight=5,
-                opacity=0.8
-            ).add_to(m)
+            for route in segment_route:
+                folium.GeoJson(
+                    data=route.geojson,
+                    name=f"Segment {len(st.session_state.segment_routes)}"
+                ).add_to(m)
+            # folium.PolyLine(
+            #     locations=[(line.lat1, line.lon1) for line in segment_route] + [(segment_route[-1].lat2, segment_route[-1].lon2)],
+            #     color=color,
+            #     weight=5,
+            #     opacity=0.8
+            # ).add_to(m)
 
     if st.session_state.suggested_pois:
         for poi in st.session_state.suggested_pois:
@@ -193,21 +198,18 @@ with config_col:
                     with st.spinner("Generating optimal route..."):
                         try:
                             segment_points = split_route_by_sleeping_points(st.session_state.points)
-                            full_route = []
                             segment_routes = []
                             route_segments = []
                             
                             full_route_segments = build_routes_multiple(segment_points, bike_type)
-                            for idx, seg_route in enumerate(full_route_segments):
-                                segment_routes.append(seg_route)
-                                full_route.extend([((line.lat1, line.lon1), (line.lat2, line.lon2)) for line in seg_route])
-                                route_segments.append((f"Day {idx + 1}", sum([line.length_m for line in seg_route])))
+                            for idx, seg_routes in enumerate(full_route_segments):
+                                segment_routes.append(seg_routes)
+                                route_segments.append((f"Day {idx + 1}", sum([route.length_m for route in seg_routes])))
 
-                            st.session_state.route = full_route
                             st.session_state.segment_routes = segment_routes
                             st.session_state.route_segments = route_segments
 
-                            bbox = get_route_bounds(st.session_state.route)
+                            bbox = get_max_bounds_from_routes([r for seg in segment_routes for r in seg])
                             st.session_state.suggested_pois = suggest_pois(bbox)
                             st.session_state.selected_pois = set()
                             st.session_state.suggested_sleeping = suggest_sleeping_places(bbox)
@@ -217,6 +219,8 @@ with config_col:
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error generating route: {str(e)}")
+                            print(e)
+                            print(traceback.format_exc())
 
 
     with tab2:
@@ -231,7 +235,6 @@ with config_col:
             if st.button("Add Selected POIs to Route"):
                 for i in st.session_state.selected_pois:
                     st.session_state.points.insert(-1, st.session_state.suggested_pois[i])
-                st.session_state.route = None
                 st.session_state.suggested_pois = None
                 st.session_state.selected_pois = set()
                 st.rerun()
@@ -248,7 +251,6 @@ with config_col:
             if st.button("Add Selected Sleeping Places to Route"):
                 for i in st.session_state.selected_sleeping:
                     st.session_state.points.insert(-1, st.session_state.suggested_sleeping[i])
-                st.session_state.route = None
                 st.session_state.suggested_sleeping = None
                 st.session_state.selected_sleeping = set()
                 st.rerun()
@@ -272,7 +274,6 @@ if map_data and map_data.get("last_clicked"):
             st.session_state.points[st.session_state.choosing_point_idx] = closest_point
 
         st.session_state.choosing_point_idx = None
-        st.session_state.route = None
         st.rerun()
 
     # If not placing user point, check for POIs and sleep clicks
@@ -282,7 +283,6 @@ if map_data and map_data.get("last_clicked"):
         if nearby_poi:
             st.session_state.points.insert(-1, Point(nearby_poi.lat, nearby_poi.lon, nearby_poi.short_desc, type="poi"))
             st.session_state.suggested_pois.remove(nearby_poi)
-            st.session_state.route = None
             st.rerun()
 
         # Check for nearby sleeping place
@@ -290,7 +290,6 @@ if map_data and map_data.get("last_clicked"):
         if nearby_sleep:
             st.session_state.points.insert(-1, Point(nearby_sleep.lat, nearby_sleep.lon, nearby_sleep.short_desc, type="sleep"))
             st.session_state.suggested_sleeping.remove(nearby_sleep)
-            st.session_state.route = None
             st.rerun()
 
 

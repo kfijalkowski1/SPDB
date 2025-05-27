@@ -7,17 +7,14 @@ from typing import NamedTuple
 from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
-from db_utils import session
+from src.db_utils import session
 
 
 class Point(NamedTuple):
     lat: float
     lon: float
     short_desc: str = "Default Point"
-    type: str = None
-    
-    def __str__(self):
-        return f"({self.lat}, {self.lon})"
+    type: str | None = None
 
 
 class Line(NamedTuple):
@@ -26,23 +23,25 @@ class Line(NamedTuple):
     lat2: float
     lon2: float
     length_m: float
-    
-    def __str__(self):
-        return f"({self.lat1}, {self.lon1}) -> ({self.lat2}, {self.lon2})"
+    geojson: str
+
+
+class Route(NamedTuple):
+    start: Point
+    end: Point
+    length_m: float
+    geojson: str
+    geom: str
 
 
 class DbPoint(NamedTuple):
     id: int
-    # osm_id: int
     lat: float
     lon: float
     geom: str
 
-    def __str__(self):
-        return f"id={self.id} ({self.lat}, {self.lon})"
-    
     @property
-    def point(self):
+    def point(self) -> Point:
         return Point(self.lat, self.lon)
 
 
@@ -60,25 +59,7 @@ class NoRouteError(ValueError):
     pass
 
 
-def generate_path(start_point: Point, end_point: Point, bike_type, num_points=50):
-    """Mock path generator, returns straight line between points"""
-    print(f"Generating path from {start_point} to {end_point} for {bike_type}")
-    lat1, lon1 = start_point
-    lat2, lon2 = end_point
-
-    path = [
-        (
-            lat1 + (lat2 - lat1) * i / (num_points - 1),
-            lon1 + (lon2 - lon1) * i / (num_points - 1)
-        )
-        for i in range(num_points)
-    ]
-    print(path)
-    return path
-
-
 def get_closest_points(reference_point: Point, n: int) -> list[DbPoint]:
-    
     # note lat and lon are swapped!
     stmt = """
     SELECT id, lat, lon, the_geom
@@ -99,7 +80,6 @@ def get_closest_points(reference_point: Point, n: int) -> list[DbPoint]:
     return [
         DbPoint(
             id=row[0],
-            # osm_id=row[1],
             lat=row[1],
             lon=row[2],
             geom=row[3]
@@ -115,8 +95,8 @@ def get_closest_point(reference_point: Point) -> DbPoint:
 def _find_path_astar(
     start_point: Point,
     end_point: Point,
-    road_type_weights: dict[RoadType, float] | None = None,
-) -> list[Line]:
+    road_type_weights: dict[RoadType, float],
+) -> Route:
 
     x_a, y_a = start_point.lon, start_point.lat
     x_b, y_b = end_point.lon, end_point.lat
@@ -168,49 +148,52 @@ def _find_path_astar(
 
 
     stmt = f"""
-        WITH start_point AS (
-            SELECT id
-            FROM ways_vertices_pgr "vert"
-            ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326)::geometry ASC
-            LIMIT 1
-        ), end_point AS (
-            SELECT id
-            FROM ways_vertices_pgr "vert"
-            ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)::geometry ASC
-            LIMIT 1
-        )
+SELECT ST_AsGeoJSON(ST_LineMerge(ST_Collect(sq.geom))) "geojson", ST_LineMerge(ST_Collect(sq.geom)) "geom", sum(sq.length_m) "length_m"
+FROM (
+    WITH start_point AS (
+        SELECT id
+        FROM ways_vertices_pgr "vert"
+        ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:start_lon, :start_lat), 4326)::geometry ASC
+        LIMIT 1
+    ), end_point AS (
+        SELECT id
+        FROM ways_vertices_pgr "vert"
+        ORDER BY vert.the_geom <-> ST_SetSRID(ST_MakePoint(:end_lon, :end_lat), 4326)::geometry ASC
+        LIMIT 1
+    )
 
-        SELECT y1 "lat1", x1 "lon1", y2 "lat2", x2 "lon2", ST_Length(the_geom::geography) "length_m", the_geom "geometry" FROM pgr_bdastar(
-            '
-            SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
-            FROM (
-                SELECT 
-                    gid "id",
-                    source,
-                    target,
-                    CASE
-                        WHEN road_type = ''roads_paved'' THEN :paved_weight * length
-                        WHEN road_type = ''roads_unpaved'' THEN :unpaved_weight * length
-                        WHEN road_type = ''roads_unknown_surface'' THEN :unknown_surface_weight * length
-                        WHEN road_type = ''roads_primary'' THEN :primary_weight * length
-                        WHEN road_type = ''roads_secondary'' THEN :secondary_weight * length
-                        WHEN road_type = ''cycleways'' THEN :cycleway_weight * length
-                    END AS "cost",
-                    SIGN(reverse_cost) AS sgn,
-                    x1, y1, x2, y2
-                FROM ways
-                WHERE 
-                    (grid_lon BETWEEN (:lon_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lon_upper_bound + :dist_filter_deg) * {GRID_SCALE})
-                    AND (grid_lat BETWEEN (:lat_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lat_upper_bound + :dist_filter_deg) * {GRID_SCALE})
-                    AND (:dist_filter_deg * :factor_bott - (:factor_c)) * {GRID_SCALE} > :factor_a * grid_lon + :factor_b * grid_lat
-                    AND (- (:dist_filter_deg * :factor_bott) - (:factor_c)) * {GRID_SCALE} < :factor_a * grid_lon + :factor_b * grid_lat
-            ) AS sq
-            ',
-            (SELECT id FROM start_point),
-            (SELECT id FROM end_point),
-            directed => true, heuristic => 4
-        ) as waypoints
-        INNER JOIN ways rd ON waypoints.edge = rd.gid;
+	SELECT ST_Length(the_geom::geography) "length_m", ST_AsGeoJSON(the_geom) "geojson", the_geom "geom" FROM pgr_bdastar(
+        '
+        SELECT sq.id, sq.source, sq.target, sq.cost, sq.sgn * sq.cost "reverse_cost", sq.x1, sq.y1, sq.x2, sq.y2
+        FROM (
+            SELECT 
+                gid "id",
+                source,
+                target,
+                CASE
+                    WHEN road_type = ''roads_paved'' THEN :paved_weight * length
+                    WHEN road_type = ''roads_unpaved'' THEN :unpaved_weight * length
+                    WHEN road_type = ''roads_unknown_surface'' THEN :unknown_surface_weight * length
+                    WHEN road_type = ''roads_primary'' THEN :primary_weight * length
+                    WHEN road_type = ''roads_secondary'' THEN :secondary_weight * length
+                    WHEN road_type = ''cycleways'' THEN :cycleway_weight * length
+                END AS "cost",
+                SIGN(reverse_cost) AS sgn,
+                x1, y1, x2, y2
+            FROM ways
+            WHERE 
+                (grid_lon BETWEEN (:lon_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lon_upper_bound + :dist_filter_deg) * {GRID_SCALE})
+                AND (grid_lat BETWEEN (:lat_lower_bound - :dist_filter_deg) * {GRID_SCALE} AND (:lat_upper_bound + :dist_filter_deg) * {GRID_SCALE})
+                AND (:dist_filter_deg * :factor_bott - (:factor_c)) * {GRID_SCALE} > :factor_a * grid_lon + :factor_b * grid_lat
+                AND (- (:dist_filter_deg * :factor_bott) - (:factor_c)) * {GRID_SCALE} < :factor_a * grid_lon + :factor_b * grid_lat
+        ) AS sq
+        ',
+        (SELECT id FROM start_point),
+        (SELECT id FROM end_point),
+        directed => true, heuristic => 4
+    ) as waypoints
+    INNER JOIN ways rd ON waypoints.edge = rd.gid
+) sq;
     """
     
     with session() as db_session:
@@ -242,26 +225,20 @@ def _find_path_astar(
         result = db_session.execute(
             text(stmt),
             params
-        ).fetchall()
+        ).fetchone()
     
-    rows = [
-        Line(
-            lat1=row[0],
-            lon1=row[1],
-            lat2=row[2],
-            lon2=row[3],
-            length_m=row[4]
-        )
-        for row in result
-    ]
-    
-    if len(rows) == 0:
+    if result is None or result[0] is None:
         raise NoRouteError(f"No route found between {start_point} and {end_point}")
-        
-    return rows
+    
+    return Route(
+        start=start_point,
+        end=end_point,
+        length_m=result[2],
+        geojson=result[0],
+        geom=result[1]
+    )
 
-
-def build_route(points: list[Point], bike_type: str) -> list[Line]:
+def build_route(points: list[Point], bike_type: str) -> list[Route]:
     # todo compute based on bike type
     # lower weight <=> higher preference
     WEIGHTS = {
@@ -276,7 +253,7 @@ def build_route(points: list[Point], bike_type: str) -> list[Line]:
     assert len(points) >= 2, f"build_route requires at least 2 points, got {len(points)}"
     
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        segments_to_future = {
+        routes_to_futures = {
             (s_start, s_end): executor.submit(
                 _find_path_astar,
                 start_point=s_start,
@@ -286,18 +263,18 @@ def build_route(points: list[Point], bike_type: str) -> list[Line]:
             for s_start, s_end in itertools.pairwise(points)
         }
     
-    route = []
-    for i, ((s_start, s_end), future) in enumerate(segments_to_future.items(), start=1):
+    routes = []
+    for i, ((s_start, s_end), future) in enumerate(routes_to_futures.items(), start=1):
         try:
-            segment = future.result()
-            route.extend(segment)
+            route = future.result()
+            routes.append(route)
         except NoRouteError as e:
             print(f"Error finding route between points {i} -> {i+1} {s_start} and {s_end}: {e}")
             raise e
-    return route
+    return routes
 
 
-def build_routes_multiple(segments: list[list[Point]], bike_type: str) -> list[list[Line]]:
+def build_routes_multiple(segments: list[list[Point]], bike_type: str) -> list[list[Route]]:
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = {
             executor.submit(build_route, segment, bike_type): segment
@@ -305,8 +282,7 @@ def build_routes_multiple(segments: list[list[Point]], bike_type: str) -> list[l
         }
     
     results = []
-    for future in concurrent.futures.as_completed(futures):
-        segment = futures[future]
+    for future, segment in futures.items():
         try:
             route = future.result()
             results.append(route)

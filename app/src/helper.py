@@ -1,6 +1,6 @@
-from engine import Point
+from src.engine import Point
 import random
-from geopy.distance import geodesic
+from geopy.distance import geodesic  # type: ignore[import-untyped]
 
 def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
     segments = []
@@ -17,7 +17,7 @@ def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
 
     return segments
 
-def find_nearby(click_latlon, candidates, max_meters=10000):
+def find_nearby(click_latlon: tuple[float, float], candidates: list[Point], max_meters: int = 10000) -> Point | None:
     for obj in candidates:
         obj_latlon = (obj.lat, obj.lon)
         if geodesic(click_latlon, obj_latlon).meters < max_meters:
