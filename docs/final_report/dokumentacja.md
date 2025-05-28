@@ -21,7 +21,7 @@ Celem projektu była implementacja aplikacji pozwalającej na planowanie wielodn
 
 Aplikacja została zaimplementowana z wykorzystaniem biblioteki Streamlit dla języka Python. Jako bazę danych wykorzystano PostgreSQL w wersji 17 z rozszerzeniami PostGIS i pgrouting. Do wyszukiwania punktów zwiedzania oraz noclegów skorzystano z Overpass API.
 
-![Architektura wysokopoziomowa](init_arch_with_data.drawio.png){ width=600 }
+![Architektura wysokopoziomowa](init_arch_with_data.drawio.png){ width=350 }
 
 ### Model danych
 
