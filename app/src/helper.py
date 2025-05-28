@@ -1,9 +1,9 @@
-from src.engine import Point
-import random
 from geopy.distance import geodesic  # type: ignore[import-untyped]
 
+from src.engine import Point
 from src.enums import BikeType, FitnessLevel, RoadType
 from src.weights import BIKE_TYPE_WEIGHTS
+
 
 def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
     segments = []
@@ -20,6 +20,7 @@ def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
 
     return segments
 
+
 def find_nearby(click_latlon: tuple[float, float], candidates: list[Point], max_meters: int = 10000) -> Point | None:
     for obj in candidates:
         obj_latlon = (obj.lat, obj.lon)
@@ -34,8 +35,15 @@ def estimate_speed_kph(bike_type: BikeType, road_type: RoadType, fitness_level: 
     return speed_base * speed_multiplier
 
 
-def estimate_time_needed_s(distance_m: float, bike_type: BikeType, road_type: RoadType, fitness_level: FitnessLevel) -> int:
+def estimate_time_needed_s(
+    distance_m: float,
+    bike_type: BikeType,
+    road_type: RoadType,
+    fitness_level: FitnessLevel,
+) -> int:
     """
     Estimate the time needed to cover a distance based on bike type and fitness level.
     """
-    return round(distance_m / (estimate_speed_kph(bike_type=bike_type, road_type=road_type, fitness_level=fitness_level) / 3.6))
+    return round(
+        distance_m / (estimate_speed_kph(bike_type=bike_type, road_type=road_type, fitness_level=fitness_level) / 3.6)
+    )

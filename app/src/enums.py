@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class RoadType(Enum):
     primary = "roads_primary"
     secondary = "roads_secondary"

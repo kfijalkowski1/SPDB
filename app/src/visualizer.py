@@ -1,48 +1,81 @@
 import traceback
+from itertools import cycle
+from typing import OrderedDict
+
+import folium
+import plotly.express as px  # type: ignore[import-untyped]
 import streamlit as st
 from streamlit_extras.stylable_container import stylable_container  # type: ignore[import-untyped]
 from streamlit_folium import st_folium  # type: ignore[import-untyped]
-import folium
-from src.engine import get_closest_point, Point, build_routes_multiple
-from src.enums import RoadType, BikeType, FitnessLevel
-from src.poi_suggester import suggest_pois, get_max_bounds_from_routes, suggest_sleeping_places
-from src.helper import split_route_by_sleeping_points, find_nearby, estimate_time_needed_s, estimate_speed_kph
-from itertools import cycle
-import plotly.express as px  # type: ignore[import-untyped]
-from typing import OrderedDict
+
+from src.engine import Point, build_routes_multiple, get_closest_point
+from src.enums import BikeType, FitnessLevel, RoadType
+from src.helper import (
+    estimate_speed_kph,
+    estimate_time_needed_s,
+    find_nearby,
+    split_route_by_sleeping_points,
+)
+from src.poi_suggester import (
+    get_max_bounds_from_routes,
+    suggest_pois,
+    suggest_sleeping_places,
+)
 
 # Configure page
 st.set_page_config(page_title="Bike Route Planner", layout="wide")
 
 # Initialize session state
 for key in [
-    'points', 'route', 'segment_routes', 'route_segments',
-    'choosing_point_idx', 'suggested_pois', 'selected_pois',
-    'suggested_sleeping', 'selected_sleeping', 'road_type_to_distance', 'bike_type', 'fitness_level'
+    "points",
+    "route",
+    "segment_routes",
+    "route_segments",
+    "choosing_point_idx",
+    "suggested_pois",
+    "selected_pois",
+    "suggested_sleeping",
+    "selected_sleeping",
+    "road_type_to_distance",
+    "bike_type",
+    "fitness_level",
 ]:
     if key not in st.session_state:
-        if key in ('route', 'segment_routes', 'route_segments', 'choosing_point_idx', 'suggested_pois', 'suggested_sleeping', 'bike_type', 'fitness_level'):
+        if key in (
+            "route",
+            "segment_routes",
+            "route_segments",
+            "choosing_point_idx",
+            "suggested_pois",
+            "suggested_sleeping",
+            "bike_type",
+            "fitness_level",
+        ):
             st.session_state[key] = None
-        elif key in ('selected_pois', 'selected_sleeping'):
+        elif key in ("selected_pois", "selected_sleeping"):
             st.session_state[key] = set()
         else:
             st.session_state[key] = []
 
-bike_type_name_mapping = OrderedDict({
-    "Road Bike": BikeType.road,
-    "Mountain Bike": BikeType.mtb,
-    "Gravel Bike": BikeType.gravel,
-    "Trekking Bike": BikeType.trekking,
-    "E-Bike": BikeType.ebike,
-})
+bike_type_name_mapping = OrderedDict(
+    {
+        "Road Bike": BikeType.road,
+        "Mountain Bike": BikeType.mtb,
+        "Gravel Bike": BikeType.gravel,
+        "Trekking Bike": BikeType.trekking,
+        "E-Bike": BikeType.ebike,
+    }
+)
 
-fitness_level_name_mapping = OrderedDict({
-    "Low": FitnessLevel.low,
-    "Medium": FitnessLevel.medium,
-    "Good": FitnessLevel.good,
-    "Very Good": FitnessLevel.very_good,
-    "Excellent": FitnessLevel.excellent,
-})
+fitness_level_name_mapping = OrderedDict(
+    {
+        "Low": FitnessLevel.low,
+        "Medium": FitnessLevel.medium,
+        "Good": FitnessLevel.good,
+        "Very Good": FitnessLevel.very_good,
+        "Excellent": FitnessLevel.excellent,
+    }
+)
 
 
 # Sidebar - Trip Configuration
@@ -68,26 +101,26 @@ with map_col:
 
     for idx, point in enumerate(st.session_state.points):
         if idx == 0:
-            color = 'green'
+            color = "green"
             tooltip = "Start Point"
         elif idx == len(st.session_state.points) - 1:
-            color = 'red'
+            color = "red"
             tooltip = "End Point"
         else:
-            color = 'orange'
+            color = "orange"
             tooltip = point.short_desc
 
         if point.type == "sleep" and point not in (st.session_state.suggested_sleeping or []):
             folium.Marker(
                 location=(point.lat, point.lon),
-                icon=folium.Icon(color='darkblue', icon="bed", prefix="fa"),
-                tooltip=point.short_desc
+                icon=folium.Icon(color="darkblue", icon="bed", prefix="fa"),
+                tooltip=point.short_desc,
             ).add_to(m)
         else:
             folium.Marker(
                 location=(point.lat, point.lon),
                 icon=folium.Icon(color=color),
-                tooltip=tooltip
+                tooltip=tooltip,
             ).add_to(m)
 
     if st.session_state.segment_routes:
@@ -97,23 +130,23 @@ with map_col:
             for route in segment_route:
                 folium.GeoJson(
                     data=route.geojson,
-                    name=f"Segment {len(st.session_state.segment_routes)}"
+                    name=f"Segment {len(st.session_state.segment_routes)}",
                 ).add_to(m)
 
     if st.session_state.suggested_pois:
         for poi in st.session_state.suggested_pois:
             folium.Marker(
                 location=(poi.lat, poi.lon),
-                icon=folium.Icon(color='purple'),
-                tooltip=poi.short_desc
+                icon=folium.Icon(color="purple"),
+                tooltip=poi.short_desc,
             ).add_to(m)
 
     if st.session_state.suggested_sleeping:
         for sleep in st.session_state.suggested_sleeping:
             folium.Marker(
                 location=(sleep.lat, sleep.lon),
-                icon=folium.Icon(color='cadetblue', icon="bed", prefix="fa"),
-                tooltip=sleep.short_desc
+                icon=folium.Icon(color="cadetblue", icon="bed", prefix="fa"),
+                tooltip=sleep.short_desc,
             ).add_to(m)
 
     map_data = st_folium(m, width=800, height=600, returned_objects=["last_clicked"])
@@ -121,10 +154,8 @@ with map_col:
     if st.session_state.route_segments:
         total_days = max(len(st.session_state.route_segments), st.session_state.trip_days)
         m_per_day = st.session_state.daily_m
-        
-        distance_by_day = {
-            label: dist for label, dist in st.session_state.route_segments
-        } | {
+
+        distance_by_day = {label: dist for label, dist in st.session_state.route_segments} | {
             f"Day {i + 1}": 0 for i in range(len(st.session_state.route_segments), total_days)
         }
         distance_by_road_type = {rt: 0 for rt in RoadType}
@@ -137,7 +168,7 @@ with map_col:
             road_type: estimate_speed_kph(
                 bike_type=st.session_state.bike_type,
                 road_type=road_type,
-                fitness_level=st.session_state.fitness_level
+                fitness_level=st.session_state.fitness_level,
             )
             for road_type in distance_by_road_type.keys()
         }
@@ -146,73 +177,113 @@ with map_col:
                 distance_m=distance_by_road_type[RoadType(road_type)],
                 bike_type=st.session_state.bike_type,
                 road_type=road_type,
-                fitness_level=st.session_state.fitness_level
+                fitness_level=st.session_state.fitness_level,
             )
             for road_type in distance_by_road_type.keys()
         }
         time_s_by_day = {
-           i: sum([sum([estimate_time_needed_s(distance_m=dist_m, bike_type=st.session_state.bike_type, road_type=RoadType(rt), fitness_level=st.session_state.fitness_level) for rt, dist_m in route.length_m_road_types.items()]) for route in seg]) for i, seg in enumerate(st.session_state.segment_routes, start=1)
-        } | {
-            i: 0 for i in range(len(st.session_state.segment_routes) + 1, total_days + 1)
-        }
+            i: sum(
+                [
+                    sum(
+                        [
+                            estimate_time_needed_s(
+                                distance_m=dist_m,
+                                bike_type=st.session_state.bike_type,
+                                road_type=RoadType(rt),
+                                fitness_level=st.session_state.fitness_level,
+                            )
+                            for rt, dist_m in route.length_m_road_types.items()
+                        ]
+                    )
+                    for route in seg
+                ]
+            )
+            for i, seg in enumerate(st.session_state.segment_routes, start=1)
+        } | {i: 0 for i in range(len(st.session_state.segment_routes) + 1, total_days + 1)}
         total_time_s = sum(time_s_by_day.values())
-        
-        
+
         st.write(f"### Total Distance: {total_distance / 1000:.2f} km")
-        st.write(f"Estimated moving time: _**{sum(time_s_by_day.values()) // 3600}:{sum(time_s_by_day.values()) % 3600 // 60:02} h**_ at average speed of _**{total_distance / total_time_s * 3.6 :.1f} km/h**_.")
-        
-        cols = st.columns([1, 1], vertical_alignment='center')
-        
+        st.write(
+            f"Estimated moving time: _**{sum(time_s_by_day.values()) // 3600}:{sum(time_s_by_day.values()) % 3600 // 60:02} h**_ at average speed of _**{total_distance / total_time_s * 3.6:.1f} km/h**_."
+        )
+
+        cols = st.columns([1, 1], vertical_alignment="center")
+
         with cols[0]:
             days_data = [
-                {
-                    'Day': f"Day {i}",
-                    'Distance': dist / 1000
-                }
-                for i, (_, dist) in enumerate(distance_by_day.items(), start=1) if dist > 0
+                {"Day": f"Day {i}", "Distance": dist / 1000}
+                for i, (_, dist) in enumerate(distance_by_day.items(), start=1)
+                if dist > 0
             ]
-            fig = px.pie(days_data, values='Distance', names='Day', 
-                title="Distance by days", hole=0.7, category_orders={'Day': [f"Day {i}" for i in range(1, total_days + 1)]})
+            fig = px.pie(
+                days_data,
+                values="Distance",
+                names="Day",
+                title="Distance by days",
+                hole=0.7,
+                category_orders={"Day": [f"Day {i}" for i in range(1, total_days + 1)]},
+            )
             st.plotly_chart(fig, use_container_width=True)
         with cols[1]:
             st.table(
                 {
                     "Day": [f"Day {i}" for i in range(1, len(distance_by_day) + 1)],
                     "Distance": [f"{round(dist / 1000, 2)} km " for dist in distance_by_day.values()],
-                    "Plan": [f"{round((abs(dist - m_per_day)) / 1000, 2)} km " + (f"ahead of plan" if dist > m_per_day else "behind plan") for dist in distance_by_day.values()],
-                    "Est. time": [f"{time_s_by_day[i] // 3600}:{time_s_by_day[i] % 3600 // 60:02} h" for i in range(1, len(distance_by_day) + 1)]
+                    "Plan": [
+                        f"{round((abs(dist - m_per_day)) / 1000, 2)} km "
+                        + ("ahead of plan" if dist > m_per_day else "behind plan")
+                        for dist in distance_by_day.values()
+                    ],
+                    "Est. time": [
+                        f"{time_s_by_day[i] // 3600}:{time_s_by_day[i] % 3600 // 60:02} h"
+                        for i in range(1, len(distance_by_day) + 1)
+                    ],
                 }
             )
-        
-        cols = st.columns([1, 1], vertical_alignment='center')
-        
-        
+
+        cols = st.columns([1, 1], vertical_alignment="center")
+
         with cols[0]:
-            name_mapping  = OrderedDict(**{
-                RoadType.primary.value: "Primary",
-                RoadType.secondary.value: "Secondary",
-                RoadType.paved.value: "Paved",
-                RoadType.unpaved.value: "Unpaved",
-                RoadType.cycleway.value: "Cycleway",
-                RoadType.unknown_surface.value: "Unknown Surface",
-            })
+            name_mapping = OrderedDict(
+                **{
+                    RoadType.primary.value: "Primary",
+                    RoadType.secondary.value: "Secondary",
+                    RoadType.paved.value: "Paved",
+                    RoadType.unpaved.value: "Unpaved",
+                    RoadType.cycleway.value: "Cycleway",
+                    RoadType.unknown_surface.value: "Unknown Surface",
+                }
+            )
             road_type_data = [
                 {
-                    'Road Type': name_mapping[road_type],
-                    'Distance (km)': distance_by_road_type[RoadType(road_type)] / 1000
+                    "Road Type": name_mapping[road_type],
+                    "Distance (km)": distance_by_road_type[RoadType(road_type)] / 1000,
                 }
-                for road_type in name_mapping.keys() if distance_by_road_type[RoadType(road_type)] > 0
+                for road_type in name_mapping.keys()
+                if distance_by_road_type[RoadType(road_type)] > 0
             ]
-            
-            fig = px.pie(road_type_data, values='Distance (km)', names='Road Type', 
-                title="Distance by road types", hole=0.7, category_orders={'Road Type': list(name_mapping.values())})
+
+            fig = px.pie(
+                road_type_data,
+                values="Distance (km)",
+                names="Road Type",
+                title="Distance by road types",
+                hole=0.7,
+                category_orders={"Road Type": list(name_mapping.values())},
+            )
             st.plotly_chart(fig, use_container_width=True)
         with cols[1]:
             st.table(
                 {
                     "Road Type": list(name_mapping.values()),
-                    "Share": [f"{round(distance_by_road_type[RoadType(road_type)] * 100 / total_distance, 2)} %" for road_type in name_mapping.keys()],
-                    "Distance": [f"{round(distance_by_road_type[RoadType(road_type)] / 1000, 2)} km" for road_type in name_mapping.keys()]
+                    "Share": [
+                        f"{round(distance_by_road_type[RoadType(road_type)] * 100 / total_distance, 2)} %"
+                        for road_type in name_mapping.keys()
+                    ],
+                    "Distance": [
+                        f"{round(distance_by_road_type[RoadType(road_type)] / 1000, 2)} km"
+                        for road_type in name_mapping.keys()
+                    ],
                 }
             )
 
@@ -224,9 +295,9 @@ with config_col:
         st.subheader("Route Points")
         if len(st.session_state.points) == 0:
             st.info('Start your next big adventure! Click "Add point" to select a point on the map.')
-        
+
         for i, point in enumerate(st.session_state.points):
-            cols = st.columns([0.8, 1.3, 10, 5], vertical_alignment="center")
+            cols = st.columns([1.3, 1.3, 10, 5], vertical_alignment="center")
             with cols[0]:
                 with stylable_container(
                     key=f"points_number_{i}",
@@ -234,7 +305,7 @@ with config_col:
                     h4{
                         margin-bottom: 5px;
                     }
-                    """
+                    """,
                 ):
                     st.write(f"#### {i + 1}.")
             with cols[1]:
@@ -245,13 +316,19 @@ with config_col:
                         float: left;
                         margin-bottom: 10px;
                     }
-                    """
+                    """,
                 ):
                     if st.button("↑", key=f"move_up_{i}") and i > 0:
-                        st.session_state.points[i - 1], st.session_state.points[i] = st.session_state.points[i], st.session_state.points[i - 1]
+                        st.session_state.points[i - 1], st.session_state.points[i] = (
+                            st.session_state.points[i],
+                            st.session_state.points[i - 1],
+                        )
                         st.rerun()
                     if st.button("↓", key=f"move_down_{i}") and i < len(st.session_state.points) - 1:
-                        st.session_state.points[i + 1], st.session_state.points[i] = st.session_state.points[i], st.session_state.points[i + 1]
+                        st.session_state.points[i + 1], st.session_state.points[i] = (
+                            st.session_state.points[i],
+                            st.session_state.points[i + 1],
+                        )
                         st.rerun()
             with cols[2]:
                 st.write(f"##### {point.short_desc}")
@@ -264,7 +341,7 @@ with config_col:
                         float: right;
                         margin-bottom: 10px;
                     }
-                    """
+                    """,
                 ):
                     if st.button("Choose again", key=f"choose_again_{i}"):
                         st.session_state.choosing_point_idx = i
@@ -279,15 +356,25 @@ with config_col:
                 st.session_state.choosing_point_idx = len(st.session_state.points)
         with cols[1]:
             with stylable_container(
-                key=f"clear_all_selections_style",
+                key="clear_all_selections_style",
                 css_styles="""
                 button{
                     float: right;
                 }
-                """
+                """,
             ):
                 if st.button("Clear All Selections"):
-                    for key in ['points', 'route', 'segment_routes', 'route_segments', 'choosing_point_idx', 'suggested_pois', 'selected_pois', 'suggested_sleeping', 'selected_sleeping']:
+                    for key in [
+                        "points",
+                        "route",
+                        "segment_routes",
+                        "route_segments",
+                        "choosing_point_idx",
+                        "suggested_pois",
+                        "selected_pois",
+                        "suggested_sleeping",
+                        "selected_sleeping",
+                    ]:
                         if isinstance(st.session_state[key], list):
                             st.session_state[key] = []
                         elif isinstance(st.session_state[key], set):
@@ -306,11 +393,16 @@ with config_col:
                             segment_points = split_route_by_sleeping_points(st.session_state.points)
                             segment_routes = []
                             route_segments = []
-                            
+
                             full_route_segments = build_routes_multiple(segment_points, st.session_state.bike_type)
                             for idx, seg_routes in enumerate(full_route_segments):
                                 segment_routes.append(seg_routes)
-                                route_segments.append((f"Day {idx + 1}", sum([route.length_m for route in seg_routes])))
+                                route_segments.append(
+                                    (
+                                        f"Day {idx + 1}",
+                                        sum([route.length_m for route in seg_routes]),
+                                    )
+                                )
 
                             st.session_state.segment_routes = segment_routes
                             st.session_state.route_segments = route_segments
@@ -324,7 +416,8 @@ with config_col:
                                 float(last_point.lat) - SLEEP_SEARCH_RADIUS_DEG,
                                 float(last_point.lon) - SLEEP_SEARCH_RADIUS_DEG,
                                 float(last_point.lat) + SLEEP_SEARCH_RADIUS_DEG,
-                                float(last_point.lon) + SLEEP_SEARCH_RADIUS_DEG)
+                                float(last_point.lon) + SLEEP_SEARCH_RADIUS_DEG,
+                            )
                             st.session_state.suggested_sleeping = suggest_sleeping_places(sleep_bbox)
                             st.session_state.selected_sleeping = set()
 
@@ -334,7 +427,6 @@ with config_col:
                             st.error(f"Error generating route: {str(e)}")
                             print(e)
                             print(traceback.format_exc())
-
 
     with tab2:
         if st.session_state.suggested_pois:
@@ -370,10 +462,7 @@ with config_col:
 
 # --- Handle map clicks ---
 if map_data and map_data.get("last_clicked"):
-    click_latlon = (
-        map_data["last_clicked"]["lat"],
-        map_data["last_clicked"]["lng"]
-    )
+    click_latlon = (map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"])
 
     # Handle user point placement
     if st.session_state.choosing_point_idx is not None:
@@ -394,17 +483,27 @@ if map_data and map_data.get("last_clicked"):
         # Check for nearby POI
         nearby_poi = find_nearby(click_latlon, st.session_state.suggested_pois or [])
         if nearby_poi:
-            st.session_state.points.insert(-1, Point(nearby_poi.lat, nearby_poi.lon, nearby_poi.short_desc, type="poi"))
+            st.session_state.points.insert(
+                -1,
+                Point(nearby_poi.lat, nearby_poi.lon, nearby_poi.short_desc, type="poi"),
+            )
             st.session_state.suggested_pois.remove(nearby_poi)
             st.rerun()
 
         # Check for nearby sleeping place
         nearby_sleep = find_nearby(click_latlon, st.session_state.suggested_sleeping or [])
         if nearby_sleep:
-            st.session_state.points.insert(-1, Point(nearby_sleep.lat, nearby_sleep.lon, nearby_sleep.short_desc, type="sleep"))
+            st.session_state.points.insert(
+                -1,
+                Point(
+                    nearby_sleep.lat,
+                    nearby_sleep.lon,
+                    nearby_sleep.short_desc,
+                    type="sleep",
+                ),
+            )
             st.session_state.suggested_sleeping.remove(nearby_sleep)
             st.rerun()
-
 
 
 # Instructions

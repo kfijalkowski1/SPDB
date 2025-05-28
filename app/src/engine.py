@@ -9,8 +9,8 @@ from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
 from src.db_utils import session
-from src.weights import BIKE_TYPE_WEIGHTS
 from src.enums import BikeType, RoadType
+from src.weights import BIKE_TYPE_WEIGHTS
 
 
 class Point(NamedTuple):
@@ -63,23 +63,8 @@ def get_closest_points(reference_point: Point, n: int) -> list[DbPoint]:
     """
 
     with session() as db_session:
-        result = db_session.execute(
-            text(stmt),
-            {
-                "lat": reference_point.lat,
-                "lon": reference_point.lon,
-                "n": n
-            }
-        )
-    return [
-        DbPoint(
-            id=row[0],
-            lat=row[1],
-            lon=row[2],
-            geom=row[3]
-        )
-        for row in result
-    ]
+        result = db_session.execute(text(stmt), {"lat": reference_point.lat, "lon": reference_point.lon, "n": n})
+    return [DbPoint(id=row[0], lat=row[1], lon=row[2], geom=row[3]) for row in result]
 
 
 def get_closest_point(reference_point: Point) -> DbPoint:
@@ -91,7 +76,6 @@ def _find_path_astar(
     end_point: Point,
     road_type_weights: dict[RoadType, float],
 ) -> Route:
-
     x_a, y_a = start_point.lon, start_point.lat
     x_b, y_b = end_point.lon, end_point.lat
     print(x_a, y_a)
@@ -99,27 +83,27 @@ def _find_path_astar(
     factor_a = y_b - y_a
     factor_b = x_a - x_b
     factor_c = x_b * y_a - x_a * y_b
-    factor_bott = math.sqrt(factor_a ** 2 + factor_b ** 2)
-    
+    factor_bott = math.sqrt(factor_a**2 + factor_b**2)
+
     lon_lower_bound = min(start_point.lon, end_point.lon)
     lon_upper_bound = max(start_point.lon, end_point.lon)
     lat_lower_bound = min(start_point.lat, end_point.lat)
     lat_upper_bound = max(start_point.lat, end_point.lat)
-    
+
     ab_dist = math.sqrt((x_a - x_b) ** 2 + (y_a - y_b) ** 2)
 
     # gradually decrease from ~3.1 over very short distances to ~0.3 over long distances
     dist_filter_relative = 4.3 - 4 / (1 + math.exp(-3.5 * ab_dist + 1))
     # minimum value has to be introduced since grid has limited resolution and would otherwise return no points when querying
     # over very short distances
-    
+
     MIN_DIST_FILTER_DEG = 0.5
     MAX_DIST_FILTER_DEG = 3.0
-    
+
     dist_filter_deg = min(max(ab_dist * dist_filter_relative, MIN_DIST_FILTER_DEG), MAX_DIST_FILTER_DEG)
-    
+
     GRID_SCALE = 100
-    
+
     # Alright, why does this even work
     # We employ two filters to reduce the number of ways returned by the inner query without sacrificing performance
     # We intentionally refer to grid_lon and grid_lat: plain integer values, essentially (lat|lon) * 100 rounded to the nearest integer
@@ -139,7 +123,6 @@ def _find_path_astar(
     #  - Now we can compute the distance of a point (grid_lon, grid_lat) to the line defined by the start and end points:
     #     dist = abs(factor_a * grid_lon + factor_b * grid_lat + factor_c) / sqrt(factor_a ** 2 + factor_b ** 2)
     #  - The rest is just transformations to reduce tha number of computations that postgres has to make when filtering the ways
-
 
     stmt = f"""
 SELECT 
@@ -200,7 +183,7 @@ FROM (
     INNER JOIN ways rd ON waypoints.edge = rd.gid
 ) sq;
     """
-    
+
     with session() as db_session:
         params = {
             "start_lat": float(start_point.lat),
@@ -221,28 +204,30 @@ FROM (
             "lon_lower_bound": float(lon_lower_bound),
             "lon_upper_bound": float(lon_upper_bound),
             "lat_lower_bound": float(lat_lower_bound),
-            "lat_upper_bound": float(lat_upper_bound)
+            "lat_upper_bound": float(lat_upper_bound),
         }
-        
-        compiled = text(stmt).bindparams(**params).compile(dialect=postgresql.dialect(),compile_kwargs={"literal_binds": True})
+
+        compiled = (
+            text(stmt)
+            .bindparams(**params)
+            .compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
+        )
         print(compiled, flush=True)
-        
-        result = db_session.execute(
-            text(stmt),
-            params
-        ).fetchone()
-    
+
+        result = db_session.execute(text(stmt), params).fetchone()
+
     if result is None or result[0] is None:
         raise NoRouteError(f"No route found between {start_point} and {end_point}")
-    
+
     return Route(
         start=start_point,
         end=end_point,
         length_m=result[2],
         geojson=result[0],
         geom=result[1],
-        length_m_road_types=result[3]
+        length_m_road_types=result[3],
     )
+
 
 def build_route(points: list[Point], bike_type: BikeType) -> list[Route]:
     # todo compute based on bike type
@@ -250,36 +235,33 @@ def build_route(points: list[Point], bike_type: BikeType) -> list[Route]:
     weights = BIKE_TYPE_WEIGHTS[bike_type]["routing_weights"]
 
     assert len(points) >= 2, f"build_route requires at least 2 points, got {len(points)}"
-    
+
     with concurrent.futures.ThreadPoolExecutor() as executor:
         routes_to_futures = {
             (s_start, s_end): executor.submit(
                 _find_path_astar,
                 start_point=s_start,
                 end_point=s_end,
-                road_type_weights=weights  # type: ignore[arg-type]
+                road_type_weights=weights,  # type: ignore[arg-type]
             )
             for s_start, s_end in itertools.pairwise(points)
         }
-    
+
     routes = []
     for i, ((s_start, s_end), future) in enumerate(routes_to_futures.items(), start=1):
         try:
             route = future.result()
             routes.append(route)
         except NoRouteError as e:
-            print(f"Error finding route between points {i} -> {i+1} {s_start} and {s_end}: {e}")
+            print(f"Error finding route between points {i} -> {i + 1} {s_start} and {s_end}: {e}")
             raise e
     return routes
 
 
 def build_routes_multiple(segments: list[list[Point]], bike_type: BikeType) -> list[list[Route]]:
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = {
-            executor.submit(build_route, segment, bike_type): segment
-            for segment in segments
-        }
-    
+        futures = {executor.submit(build_route, segment, bike_type): segment for segment in segments}
+
     results = []
     for future, segment in futures.items():
         try:

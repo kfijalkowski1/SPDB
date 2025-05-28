@@ -5,11 +5,13 @@ import contextlib
 import functools
 import os
 from typing import Generator
+
+from dotenv import find_dotenv, load_dotenv
 from sqlalchemy import URL, Engine, create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from dotenv import load_dotenv, find_dotenv
+from sqlalchemy.orm import Session, sessionmaker
 
 load_dotenv(find_dotenv())
+
 
 def _get_db_url() -> URL:
     return URL.create(
@@ -18,7 +20,7 @@ def _get_db_url() -> URL:
         password=os.environ["POSTGRES_PASSWORD"],
         host=os.environ["POSTGRES_HOST"],
         port=int(os.getenv("POSTGRES_PORT", 5432)),
-        database=os.getenv("POSTGRES_DATABASE", "routing")
+        database=os.getenv("POSTGRES_DATABASE", "routing"),
     )
 
 
@@ -26,6 +28,7 @@ def _get_db_url() -> URL:
 def _get_engine() -> Engine:
     engine = create_engine(_get_db_url(), echo=True)
     return engine
+
 
 @contextlib.contextmanager
 def session() -> Generator[Session, None, None]:
