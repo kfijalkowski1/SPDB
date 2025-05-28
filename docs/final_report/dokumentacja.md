@@ -2,7 +2,7 @@
 
 Przestrzenne Bazy Danych - projekt - realizacja 25L
 
-Krzysztof Fijałowski
+Krzysztof Fijałkowski
 
 Tomasz Owienko
 
@@ -50,16 +50,55 @@ Celem projektu była implementacja aplikacji pozwalającej na planowanie wielodn
 
 ### Wyznaczanie trasy
 
-Wyznaczanie trasy oparte jest o dwukierunkowy algorytm A* oraz jego implementację w rozszerzeniu `pgrouting` dla PostgreSQL. Pozwala on wyznaczyć (w przybliżeniu) najtańszą ścieżkę między dwoma punktami. Uruchomienie algorytmu wymaga podania:
-
-- Treści zapytania wydobywającego krawędzie grafu z bazy danych
-- Identyfikatora wierzchołka startowego
-- Identyfikatora wierzchołka końcowego
-
 #### Pobranie danych
 
 #### Algorytm A*
 
+Wyznaczanie trasy oparte jest o dwukierunkowy algorytm A* oraz jego implementację w rozszerzeniu `pgrouting` dla PostgreSQL. Pozwala on wyznaczyć (w przybliżeniu) najtańszą ścieżkę między dwoma punktami. Zastosowanie wariantu  dwukierunkowego pozwala poprawić wydajność w przypadku długich tras o ok. $15-25\%$. Uruchomienie algorytmu wymaga podania:
+
+- Treści zapytania wydobywającego krawędzie grafu z bazy danych
+  - Zapytanie powinno zwrócić m.in. współrzędne początków i końców krawędzi oraz koszt ich pokonania w obie strony (ujemny koszt oznacza możliwość przebycia krawędzi tylko w jednym kierunku)
+- Identyfikatora wierzchołka startowego
+- Identyfikatora wierzchołka końcowego
+- Jednej z predefiniowanych funkcji heurystycznych
+
+W aplikacji przyjęto funkcję heurystyczną będącą odległością w linii prostej między dwoma punktami: $h(P) = \sqrt{lat(P)^2 + lon(P)^2}$. 
+
+##### Pobranie danych
+
+Zapytanie pobierające dane dla algorytmu A* zwraca wszystkie krawędzie spełniające łącznie podane kryteria:
+
+- Ich środki znajdują się w ramce mbb zawierającej punkt początkowy i startowy poszerzonej o pewien margines
+- Odległość między ich środkami a odcinkiem od punktu startowego do końcowego mieści się z marginesie
+
+Margines wyliczany jest w oparciu o odległość między punktem startowym i końcowym wg następującego wzoru (współczynniki dobrane eksperymentalnie):
+
+$$
+m = min(max(4.3 - \frac{4}{1 + e^{-3.5 d + 1}}, 0.5d), 3d)
+$$
+
+gdzie $m$ to margines, a $d$ to odległość między punktem startowym i końcowym w stopniach. W ten sposób dla krótszych tras margines jest szerszy (wyznaczenie stosunkowo prostej drogi na krótkim dystansie jest trudniejsze niż na długim) i stopniowo maleje wraz z długością trasy. Jednocześnie wprowadzono minimalny i maksymalne wartości marginesu w odniesieniu do $d$ ($0.5d, 3d$) dla poprawy stabilności algorytmu.
+
+Odległość między środkami krawędzi grafu a odcinkiem łączącym początek i koniec wytyczanej ścieżki *nie* jest obliczana w oparciu o predykaty przestrzenne PostGIS, gdyż takie rozwiązanie nie zapewniało oczekiwanej wydajności - w przypadku wyznaczania trasy długości ok. 200km pobieranie krawędzi grafu trwało blisko dwukrotnie dłużej, niż faktyczne działanie algorytmu A*. Zamiast tego odległości obliczane są w sposób bezpośredni z wykorzystaniem odpowiednio przekształconego równania odległości punktu od prostej przebiegającej przez dwa punktu, gdzie większość współczynników równania obliczana jest przez aplikację i podawana jako parametry zapytani. Wykorzystywane są współrzędne geograficzne środków punktów zapisane uprzednio jako typ `numeric` w PostgreSQL, po pozwala ograniczyć narzut na konwersję typów. Takie podejście pozwala ograniczyć liczbę zwracanych krawędzi przy pomijalnie niskim koszcie obliczenia predykatów (pod warunkiem założenia indeksu typu B-drzewo na kolumny z współrzędnymi geograficznymi środków krawędzi grafu).
+
+#### Wyznaczanie wag krawędzi
+
+Ponieważ na koszta krawędzi wpływa wybrany typ roweru, muszą być one obliczone w trakcie zapytania. Koszt każdej krawędzi obliczana jest jako iloczyn jej długości i współczynnika kary zależnego od wybranego typu roweru i rodzaju drogi. Przykładowo, dla roweru szosowego współczynnik będzie wynosił $1$ dla dróg utwardzonych niebędących drogami krajowymi i wojewódzkimi, ale jego wartość dla dróg nieutwardzonych wyniesie $3$, w związku z czym algorytm będzie je wybierał tylko w zupełnej ostateczności. Współczynniki dobierane były eksperymentalnie dla każdego typu roweru wg następujących preferencji:
+
+- Rower szosowy - silnie preferowane drogi utwardzone, niewielka kara za wybór dróg o dużym natężeniu ruchu
+- Rower gravelowy / crossowy - koszt dróg nieutwardzonych niewiele większy niż utwardzonych, stosunkowo duża kara za wybór ruchliwych dróg
+- Rower trekkingowy - tak samo jak w przypadku gravelowego, ale duża kara za wybór drogi o wysokim natężeniu ruchu
+- Rower górski - koszt dróg nieutwardzonych niższy niż utwardzonych, duża kara za wybór drogi o wysokim natężeniu ruchu
+- Rower elektryczny - wagi takie same, jak dla roweru trekkingowego (przyjęto założenie, że mają taką samą zdolność do pokonywania poszczególnych rodzajów nawierzchni, za to różnią się osiąganą prędkością)
+
+Koszta przejazdu drogi w obie strony są równe dla dróg dwukierunkowych, a przypadku dróg jednokierunkowych koszt przejazdu w przeciwną stronę przemnażany jest przez $-1$ (droga nieprzejezdna).
+
 #### Dodatkowe przetwarzanie
+
+Funkcja `pgr_bdastar` zwraca kolejne krawędzi wchodzące w skład najkrótszej ścieżki (lub nie zwraca nic jeśli nie udało się znaleźć ścieżki). W ramach zapytania obliczane i przekazywane do aplikacji są następujące dane:
+
+- Złączenie geometrii wszystkich krawędzi grafu w jedną ścieżkę zapisane w formacie GeoJSON
+- Łączna długość trasy
+- Łączny dystans pokonywany drogami każdego z typów
 
 ### Użytkowanie 
