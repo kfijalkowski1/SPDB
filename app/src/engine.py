@@ -11,13 +11,21 @@ from sqlalchemy.dialects import postgresql
 from db_utils import session
 from enums import BikeType, RoadType
 from weights import BIKE_TYPE_WEIGHTS
+from db_utils import session
+from enums import BikeType, RoadType
+from weights import BIKE_TYPE_WEIGHTS
+from enum import Enum
+
+class PointTypes(Enum):
+    SLEEPING = "sleeping"
+    POI = "poi"
 
 
 class Point(NamedTuple):
     lat: float
     lon: float
     short_desc: str = "Default Point"
-    type: str | None = None
+    type: PointTypes | None = None
 
 
 class Line(NamedTuple):
@@ -76,8 +84,8 @@ def _find_path_astar(
     end_point: Point,
     road_type_weights: dict[RoadType, float],
 ) -> Route:
-    x_a, y_a = start_point.lon, start_point.lat
-    x_b, y_b = end_point.lon, end_point.lat
+    x_a, y_a = float(start_point.lon), float(start_point.lat)
+    x_b, y_b = float(end_point.lon), float(end_point.lat)
     print(x_a, y_a)
     print(x_b, y_b)
     factor_a = y_b - y_a

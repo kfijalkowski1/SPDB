@@ -1,11 +1,52 @@
 from geopy.distance import geodesic  # type: ignore[import-untyped]
+from geojson.utils import coords  # type: ignore[import-untyped]
+from shapely.geometry import LineString  # type: ignore[import-untyped]
 
-from engine import Point
 from enums import BikeType, FitnessLevel, RoadType
 from weights import BIKE_TYPE_WEIGHTS
 from typing import List
-from engine import Point
+from engine import Point, Route
 
+
+
+def calculate_day_endpoints(routes: list[Route], daily_distance_m: float) -> list[Point]:
+    """
+    Calculate day endpoints based on daily distance limits.
+
+    Args:
+        routes: List of Route objects
+        daily_distance_m: Daily distance limit in meters
+
+    Returns:
+        List of Point objects representing end points for each day
+    """
+    if not routes:
+        return []
+
+    day_endpoints = []
+    current_day_distance = 0.0
+
+    for route in routes:
+        route_length = route.length_m
+
+        # If adding this entire route would exceed daily limit
+        if current_day_distance + route_length > daily_distance_m:
+            # Use the end of this route as the day endpoint
+            day_endpoints.append(route.end)
+            # Start new day with this route's length
+            current_day_distance = route_length
+        else:
+            # This route fits within current day
+            current_day_distance += route_length
+
+        # If we've completed a day's distance, reset for next day
+        if current_day_distance >= daily_distance_m:
+            # If we haven't already added an endpoint for this day, add the route end
+            if not day_endpoints or day_endpoints[-1] != route.end:
+                day_endpoints.append(route.end)
+            current_day_distance = 0.0
+
+    return day_endpoints
 
 
 def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
