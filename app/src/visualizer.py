@@ -298,12 +298,19 @@ with config_col:
         if len(st.session_state.points) == 0:
             st.info('Start your next big adventure! Click "Add point" to select a point on the map.')
 
+        # Flatten all route distances in order
+        point_to_point_distances_km = [
+            route.length_m / 1000
+            for segment in st.session_state.segment_routes or []
+            for route in segment
+        ]
+
         for i, point in enumerate(st.session_state.points):
             cols = st.columns([1.3, 1.3, 10, 5], vertical_alignment="center")
             with cols[0]:
                 with stylable_container(
-                    key=f"points_number_{i}",
-                    css_styles="""
+                        key=f"points_number_{i}",
+                        css_styles="""
                     h4{
                         margin-bottom: 5px;
                     }
@@ -312,8 +319,8 @@ with config_col:
                     st.write(f"#### {i + 1}.")
             with cols[1]:
                 with stylable_container(
-                    key=f"point_actions_left_{i}",
-                    css_styles="""
+                        key=f"point_actions_left_{i}",
+                        css_styles="""
                     button{
                         float: left;
                         margin-bottom: 10px;
@@ -335,10 +342,13 @@ with config_col:
             with cols[2]:
                 st.write(f"##### {point.short_desc}")
                 st.write(f"`{point.lat:.5f}, {point.lon:.5f}`")
+                # Add distance info if not the first point
+                if i > 0 and i - 1 < len(point_to_point_distances_km):
+                    st.write(f"📏 _Distance from previous_: **{point_to_point_distances_km[i - 1]:.2f} km**")
             with cols[3]:
                 with stylable_container(
-                    key=f"point_actions_right_{i}",
-                    css_styles="""
+                        key=f"point_actions_right_{i}",
+                        css_styles="""
                     button{
                         float: right;
                         margin-bottom: 10px;
