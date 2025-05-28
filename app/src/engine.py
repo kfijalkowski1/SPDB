@@ -3,13 +3,14 @@ from __future__ import annotations
 import concurrent.futures
 import itertools
 import math
-from enum import Enum
 from typing import NamedTuple
 
 from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
 from src.db_utils import session
+from src.weights import BIKE_TYPE_WEIGHTS
+from src.enums import BikeType, RoadType
 
 
 class Point(NamedTuple):
@@ -48,26 +49,7 @@ class DbPoint(NamedTuple):
         return Point(self.lat, self.lon)
 
 
-class RoadType(Enum):
-    primary = "roads_primary"
-    secondary = "roads_secondary"
-    paved = "roads_paved"
-    unpaved = "roads_unpaved"
-    unknown_surface = "roads_unknown_surface"
-    cycleway = "cycleways"
-
-
-class BikeType(Enum):
-    primary = "roads_primary"
-    secondary = "roads_secondary"
-    paved = "roads_paved"
-    unpaved = "roads_unpaved"
-    unknown_surface = "roads_unknown_surface"
-    cycleway = "cycleways"
-
-
 class NoRouteError(ValueError):
-    """Raised when no route is found"""
     pass
 
 
@@ -262,17 +244,10 @@ FROM (
         length_m_road_types=result[3]
     )
 
-def build_route(points: list[Point], bike_type: str) -> list[Route]:
+def build_route(points: list[Point], bike_type: BikeType) -> list[Route]:
     # todo compute based on bike type
     # lower weight <=> higher preference
-    WEIGHTS = {
-        RoadType.primary: 3,
-        RoadType.secondary: 1.5,
-        RoadType.paved: 1,
-        RoadType.unpaved: 2,
-        RoadType.unknown_surface: 2,
-        RoadType.cycleway: 0.5
-    }
+    weights = BIKE_TYPE_WEIGHTS[bike_type]["routing_weights"]
 
     assert len(points) >= 2, f"build_route requires at least 2 points, got {len(points)}"
     
@@ -282,7 +257,7 @@ def build_route(points: list[Point], bike_type: str) -> list[Route]:
                 _find_path_astar,
                 start_point=s_start,
                 end_point=s_end,
-                road_type_weights=WEIGHTS
+                road_type_weights=weights  # type: ignore[arg-type]
             )
             for s_start, s_end in itertools.pairwise(points)
         }
@@ -298,7 +273,7 @@ def build_route(points: list[Point], bike_type: str) -> list[Route]:
     return routes
 
 
-def build_routes_multiple(segments: list[list[Point]], bike_type: str) -> list[list[Route]]:
+def build_routes_multiple(segments: list[list[Point]], bike_type: BikeType) -> list[list[Route]]:
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = {
             executor.submit(build_route, segment, bike_type): segment

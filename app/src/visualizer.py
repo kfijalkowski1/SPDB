@@ -3,9 +3,10 @@ import streamlit as st
 from streamlit_extras.stylable_container import stylable_container  # type: ignore[import-untyped]
 from streamlit_folium import st_folium  # type: ignore[import-untyped]
 import folium
-from src.engine import get_closest_point, Point, build_routes_multiple, RoadType
+from src.engine import get_closest_point, Point, build_routes_multiple
+from src.enums import RoadType, BikeType, FitnessLevel
 from src.poi_suggester import suggest_pois, get_max_bounds_from_routes, suggest_sleeping_places
-from src.helper import split_route_by_sleeping_points, find_nearby
+from src.helper import split_route_by_sleeping_points, find_nearby, estimate_time_needed_s, estimate_speed_kph
 from itertools import cycle
 import plotly.express as px  # type: ignore[import-untyped]
 from typing import OrderedDict
@@ -17,15 +18,31 @@ st.set_page_config(page_title="Bike Route Planner", layout="wide")
 for key in [
     'points', 'route', 'segment_routes', 'route_segments',
     'choosing_point_idx', 'suggested_pois', 'selected_pois',
-    'suggested_sleeping', 'selected_sleeping', 'road_type_to_distance'
+    'suggested_sleeping', 'selected_sleeping', 'road_type_to_distance', 'bike_type', 'fitness_level'
 ]:
     if key not in st.session_state:
-        if key in ('route', 'segment_routes', 'route_segments', 'choosing_point_idx', 'suggested_pois', 'suggested_sleeping'):
+        if key in ('route', 'segment_routes', 'route_segments', 'choosing_point_idx', 'suggested_pois', 'suggested_sleeping', 'bike_type', 'fitness_level'):
             st.session_state[key] = None
         elif key in ('selected_pois', 'selected_sleeping'):
             st.session_state[key] = set()
         else:
             st.session_state[key] = []
+
+bike_type_name_mapping = OrderedDict({
+    "Road Bike": BikeType.road,
+    "Mountain Bike": BikeType.mtb,
+    "Gravel Bike": BikeType.gravel,
+    "Trekking Bike": BikeType.trekking,
+    "E-Bike": BikeType.ebike,
+})
+
+fitness_level_name_mapping = OrderedDict({
+    "Low": FitnessLevel.low,
+    "Medium": FitnessLevel.medium,
+    "Good": FitnessLevel.good,
+    "Very Good": FitnessLevel.very_good,
+    "Excellent": FitnessLevel.excellent,
+})
 
 
 # Sidebar - Trip Configuration
@@ -33,10 +50,13 @@ with st.sidebar:
     st.header("Trip Settings")
     trip_days = st.number_input("Trip Duration (days)", min_value=1, max_value=30, value=5, step=1)
     daily_km = st.number_input("Distance per Day (km)", min_value=10, max_value=300, value=40, step=5)
-    bike_type = st.selectbox("Bike Type", ["Road Bike", "Mountain Bike", "Hybrid Bike", "Electric Bike"], index=0)
+    bike_type = st.selectbox("Bike Type", list(bike_type_name_mapping.keys()), index=0)
+    fitness_level = st.select_slider("Fitness Level", list(fitness_level_name_mapping.keys()), value="Good")
 
     st.session_state.trip_days = trip_days
     st.session_state.daily_m = daily_km * 1000
+    st.session_state.bike_type = bike_type_name_mapping[bike_type]
+    st.session_state.fitness_level = fitness_level_name_mapping[fitness_level]
 
 # Main layout
 map_col, config_col = st.columns([2, 1])
@@ -107,10 +127,39 @@ with map_col:
         } | {
             f"Day {i + 1}": 0 for i in range(len(st.session_state.route_segments), total_days)
         }
+        distance_by_road_type = {rt: 0 for rt in RoadType}
+        for segment in st.session_state.segment_routes:
+            for route in segment:
+                for road_type, distance in route.length_m_road_types.items():
+                    distance_by_road_type[RoadType(road_type)] += distance
         total_distance = sum(distance_by_day.values())
+        speed_by_road_type = {
+            road_type: estimate_speed_kph(
+                bike_type=st.session_state.bike_type,
+                road_type=road_type,
+                fitness_level=st.session_state.fitness_level
+            )
+            for road_type in distance_by_road_type.keys()
+        }
+        time_s_by_road_type = {
+            road_type: estimate_time_needed_s(
+                distance_m=distance_by_road_type[RoadType(road_type)],
+                bike_type=st.session_state.bike_type,
+                road_type=road_type,
+                fitness_level=st.session_state.fitness_level
+            )
+            for road_type in distance_by_road_type.keys()
+        }
+        time_s_by_day = {
+           i: sum([sum([estimate_time_needed_s(distance_m=dist_m, bike_type=st.session_state.bike_type, road_type=RoadType(rt), fitness_level=st.session_state.fitness_level) for rt, dist_m in route.length_m_road_types.items()]) for route in seg]) for i, seg in enumerate(st.session_state.segment_routes, start=1)
+        } | {
+            i: 0 for i in range(len(st.session_state.segment_routes) + 1, total_days + 1)
+        }
+        total_time_s = sum(time_s_by_day.values())
+        
         
         st.write(f"### Total Distance: {total_distance / 1000:.2f} km")
-        st.write(f"Estimated time: 21:37 h")
+        st.write(f"Estimated moving time: _**{sum(time_s_by_day.values()) // 3600}:{sum(time_s_by_day.values()) % 3600 // 60:02} h**_ at average speed of _**{total_distance / total_time_s * 3.6 :.1f} km/h**_.")
         
         cols = st.columns([1, 1], vertical_alignment='center')
         
@@ -129,19 +178,14 @@ with map_col:
             st.table(
                 {
                     "Day": [f"Day {i}" for i in range(1, len(distance_by_day) + 1)],
-                    "Distance (km)": [f"{round(dist / 1000, 2)} km " for dist in distance_by_day.values()],
+                    "Distance": [f"{round(dist / 1000, 2)} km " for dist in distance_by_day.values()],
                     "Plan": [f"{round((abs(dist - m_per_day)) / 1000, 2)} km " + (f"ahead of plan" if dist > m_per_day else "behind plan") for dist in distance_by_day.values()],
-                    "Est. time": [f"21:37 h" for dist in distance_by_day.values()]
+                    "Est. time": [f"{time_s_by_day[i] // 3600}:{time_s_by_day[i] % 3600 // 60:02} h" for i in range(1, len(distance_by_day) + 1)]
                 }
             )
-
-        distance_by_road_type = {v.value: 0 for v in RoadType}
-        for segment in st.session_state.segment_routes:
-            for route in segment:
-                for road_type, distance in route.length_m_road_types.items():
-                    distance_by_road_type[road_type] += distance
         
         cols = st.columns([1, 1], vertical_alignment='center')
+        
         
         with cols[0]:
             name_mapping  = OrderedDict(**{
@@ -155,9 +199,9 @@ with map_col:
             road_type_data = [
                 {
                     'Road Type': name_mapping[road_type],
-                    'Distance (km)': distance_by_road_type[road_type] / 1000
+                    'Distance (km)': distance_by_road_type[RoadType(road_type)] / 1000
                 }
-                for road_type in name_mapping.keys() if distance_by_road_type[road_type] > 0
+                for road_type in name_mapping.keys() if distance_by_road_type[RoadType(road_type)] > 0
             ]
             
             fig = px.pie(road_type_data, values='Distance (km)', names='Road Type', 
@@ -167,8 +211,8 @@ with map_col:
             st.table(
                 {
                     "Road Type": list(name_mapping.values()),
-                    "Share": [f"{round(distance_by_road_type[road_type] * 100 / total_distance, 2)} %" for road_type in name_mapping.keys()],
-                    "Distance": [f"{round(distance_by_road_type[road_type] / 1000, 2)} km" for road_type in name_mapping.keys()]
+                    "Share": [f"{round(distance_by_road_type[RoadType(road_type)] * 100 / total_distance, 2)} %" for road_type in name_mapping.keys()],
+                    "Distance": [f"{round(distance_by_road_type[RoadType(road_type)] / 1000, 2)} km" for road_type in name_mapping.keys()]
                 }
             )
 
@@ -179,7 +223,7 @@ with config_col:
     with tab1:
         st.subheader("Route Points")
         if len(st.session_state.points) == 0:
-            st.info('Start your next big journey! Click "Add point" to select a point on the map.')
+            st.info('Start your next big adventure! Click "Add point" to select a point on the map.')
         
         for i, point in enumerate(st.session_state.points):
             cols = st.columns([0.8, 1.3, 10, 5], vertical_alignment="center")
@@ -263,7 +307,7 @@ with config_col:
                             segment_routes = []
                             route_segments = []
                             
-                            full_route_segments = build_routes_multiple(segment_points, bike_type)
+                            full_route_segments = build_routes_multiple(segment_points, st.session_state.bike_type)
                             for idx, seg_routes in enumerate(full_route_segments):
                                 segment_routes.append(seg_routes)
                                 route_segments.append((f"Day {idx + 1}", sum([route.length_m for route in seg_routes])))
