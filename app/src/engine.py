@@ -11,13 +11,21 @@ from sqlalchemy.dialects import postgresql
 from db_utils import session
 from enums import BikeType, RoadType
 from weights import BIKE_TYPE_WEIGHTS
+from db_utils import session
+from enums import BikeType, RoadType
+from weights import BIKE_TYPE_WEIGHTS
+from enum import Enum
+
+class PointTypes(Enum):
+    SLEEPING = "sleeping"
+    POI = "poi"
 
 
 class Point(NamedTuple):
     lat: float
     lon: float
     short_desc: str = "Default Point"
-    type: str | None = None
+    type: PointTypes | None = None
 
 
 class Line(NamedTuple):

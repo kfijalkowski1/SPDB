@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+# #!/usr/bin/env bash
 
-set -euo pipefail
+# set -euo pipefail
 
 mkdir -p data
 for voi in "dolnoslaskie" "kujawsko-pomorskie" "lubelskie" "lubuskie" "lodzkie" "malopolskie" "mazowieckie" "opolskie" "podkarpackie" "podlaskie" "pomorskie" "slaskie" "swietokrzyskie" "warminsko-mazurskie" "wielkopolskie" "zachodniopomorskie"; do

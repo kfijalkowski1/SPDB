@@ -467,6 +467,15 @@ wheels = [
 ]
 
 [[package]]
+name = "gpxpy"
+version = "1.6.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/20/ad/6f1a34e702c72cb495bb258396f237ded76c00f9fe67054a44d778d24ed9/gpxpy-1.6.2.tar.gz", hash = "sha256:a72c484b97ec42b80834353b029cc8ee1b79f0ffca1179b2210bb3baf26c01ae", size = 111695, upload-time = "2023-11-29T17:25:38.391Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/44/9f/62df6c1e52462bdd04275b36cec49efa9e8af7e7b834499eb288f73dcfbc/gpxpy-1.6.2-py3-none-any.whl", hash = "sha256:289bc2d80f116c988d0a1e763fda22838f83005573ece2bbc6521817b26fb40a", size = 42649, upload-time = "2023-11-29T17:25:35.76Z" },
+]
+
+[[package]]
 name = "greenlet"
 version = "3.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1457,10 +1466,12 @@ dependencies = [
     { name = "folium" },
     { name = "geojson" },
     { name = "geopy" },
+    { name = "gpxpy" },
     { name = "orjson" },
     { name = "plotly" },
     { name = "psycopg2-binary" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "shapely" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
@@ -1484,10 +1495,12 @@ requires-dist = [
     { name = "folium", specifier = ">=0.19.5" },
     { name = "geojson", specifier = ">=3.2.0" },
     { name = "geopy", specifier = ">=2.4.1" },
+    { name = "gpxpy", specifier = ">=1.6.2" },
     { name = "orjson", specifier = ">=3.10.18" },
     { name = "plotly", specifier = ">=6.1.1" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
+    { name = "requests", specifier = ">=2.32.3" },
     { name = "shapely", specifier = ">=2.1.1" },
     { name = "sqlalchemy", specifier = ">=2.0.41" },
     { name = "streamlit", specifier = ">=1.45.0" },
