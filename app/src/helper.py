@@ -1,8 +1,11 @@
 from geopy.distance import geodesic  # type: ignore[import-untyped]
 
-from src.engine import Point
-from src.enums import BikeType, FitnessLevel, RoadType
-from src.weights import BIKE_TYPE_WEIGHTS
+from engine import Point
+from enums import BikeType, FitnessLevel, RoadType
+from weights import BIKE_TYPE_WEIGHTS
+from typing import List
+from engine import Point
+
 
 
 def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
@@ -47,3 +50,34 @@ def estimate_time_needed_s(
     return round(
         distance_m / (estimate_speed_kph(bike_type=bike_type, road_type=road_type, fitness_level=fitness_level) / 3.6)
     )
+
+
+
+
+def insert_multiple_points_logically(existing_points: List[Point], new_points: List[Point]) -> List[Point]:
+    for new_point in new_points:
+        if len(existing_points) < 2:
+            existing_points.append(new_point)
+            continue
+
+        best_idx = 1
+        min_added_distance = float("inf")
+
+        for i in range(len(existing_points) - 1):
+            p1 = existing_points[i]
+            p2 = existing_points[i + 1]
+
+            original_dist = geodesic((p1.lat, p1.lon), (p2.lat, p2.lon)).meters
+            with_new = (
+                geodesic((p1.lat, p1.lon), (new_point.lat, new_point.lon)).meters +
+                geodesic((new_point.lat, new_point.lon), (p2.lat, p2.lon)).meters
+            )
+            added = with_new - original_dist
+
+            if added < min_added_distance:
+                min_added_distance = added
+                best_idx = i + 1
+
+        existing_points = existing_points[:best_idx] + [new_point] + existing_points[best_idx:]
+
+    return existing_points

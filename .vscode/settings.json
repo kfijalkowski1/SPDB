@@ -1,0 +1,8 @@
+{
+    "cSpell.words": [
+        "dotenv"
+    ],
+    "mypy.runUsingActiveInterpreter": true,
+    "mypy.configFile": "app/pyproject.toml",
+    "cSpell.language": "en,pl",
+}

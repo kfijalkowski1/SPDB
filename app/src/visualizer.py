@@ -8,15 +8,16 @@ import streamlit as st
 from streamlit_extras.stylable_container import stylable_container  # type: ignore[import-untyped]
 from streamlit_folium import st_folium  # type: ignore[import-untyped]
 
-from src.engine import Point, build_routes_multiple, get_closest_point
-from src.enums import BikeType, FitnessLevel, RoadType
-from src.helper import (
+from engine import Point, build_routes_multiple, get_closest_point
+from enums import BikeType, FitnessLevel, RoadType
+from helper import (
     estimate_speed_kph,
     estimate_time_needed_s,
     find_nearby,
     split_route_by_sleeping_points,
+    insert_multiple_points_logically,
 )
-from src.poi_suggester import (
+from poi_suggester import (
     get_max_bounds_from_routes,
     suggest_pois,
     suggest_sleeping_places,
@@ -131,6 +132,7 @@ with map_col:
                 folium.GeoJson(
                     data=route.geojson,
                     name=f"Segment {len(st.session_state.segment_routes)}",
+                    color = color
                 ).add_to(m)
 
     if st.session_state.suggested_pois:
@@ -296,12 +298,19 @@ with config_col:
         if len(st.session_state.points) == 0:
             st.info('Start your next big adventure! Click "Add point" to select a point on the map.')
 
+        # Flatten all route distances in order
+        point_to_point_distances_km = [
+            route.length_m / 1000
+            for segment in st.session_state.segment_routes or []
+            for route in segment
+        ]
+
         for i, point in enumerate(st.session_state.points):
             cols = st.columns([1.3, 1.3, 10, 5], vertical_alignment="center")
             with cols[0]:
                 with stylable_container(
-                    key=f"points_number_{i}",
-                    css_styles="""
+                        key=f"points_number_{i}",
+                        css_styles="""
                     h4{
                         margin-bottom: 5px;
                     }
@@ -310,8 +319,8 @@ with config_col:
                     st.write(f"#### {i + 1}.")
             with cols[1]:
                 with stylable_container(
-                    key=f"point_actions_left_{i}",
-                    css_styles="""
+                        key=f"point_actions_left_{i}",
+                        css_styles="""
                     button{
                         float: left;
                         margin-bottom: 10px;
@@ -333,10 +342,13 @@ with config_col:
             with cols[2]:
                 st.write(f"##### {point.short_desc}")
                 st.write(f"`{point.lat:.5f}, {point.lon:.5f}`")
+                # Add distance info if not the first point
+                if i > 0 and i - 1 < len(point_to_point_distances_km):
+                    st.write(f"📏 _Distance from previous_: **{point_to_point_distances_km[i - 1]:.2f} km**")
             with cols[3]:
                 with stylable_container(
-                    key=f"point_actions_right_{i}",
-                    css_styles="""
+                        key=f"point_actions_right_{i}",
+                        css_styles="""
                     button{
                         float: right;
                         margin-bottom: 10px;
@@ -438,8 +450,8 @@ with config_col:
                 else:
                     st.session_state.selected_pois.discard(i)
             if st.button("Add Selected POIs to Route"):
-                for i in st.session_state.selected_pois:
-                    st.session_state.points.insert(-1, st.session_state.suggested_pois[i])
+                selected_pois = [st.session_state.suggested_pois[i] for i in st.session_state.selected_pois]
+                st.session_state.points = insert_multiple_points_logically(st.session_state.points, selected_pois)
                 st.session_state.suggested_pois = None
                 st.session_state.selected_pois = set()
                 st.rerun()
@@ -454,8 +466,8 @@ with config_col:
                 else:
                     st.session_state.selected_sleeping.discard(i)
             if st.button("Add Selected Sleeping Places to Route"):
-                for i in st.session_state.selected_sleeping:
-                    st.session_state.points.insert(-1, st.session_state.suggested_sleeping[i])
+                selected_sleep = [st.session_state.suggested_sleeping[i] for i in st.session_state.selected_sleeping]
+                st.session_state.points = insert_multiple_points_logically(st.session_state.points, selected_sleep)
                 st.session_state.suggested_sleeping = None
                 st.session_state.selected_sleeping = set()
                 st.rerun()
@@ -478,14 +490,14 @@ if map_data and map_data.get("last_clicked"):
         st.session_state.choosing_point_idx = None
         st.rerun()
 
-    # If not placing user point, check for POIs and sleep clicks
     else:
         # Check for nearby POI
         nearby_poi = find_nearby(click_latlon, st.session_state.suggested_pois or [])
         if nearby_poi:
-            st.session_state.points.insert(
-                -1,
-                Point(nearby_poi.lat, nearby_poi.lon, nearby_poi.short_desc, type="poi"),
+            new_poi = Point(nearby_poi.lat, nearby_poi.lon, nearby_poi.short_desc, type="poi")
+            st.session_state.points = insert_multiple_points_logically(
+                st.session_state.points,
+                [new_poi]
             )
             st.session_state.suggested_pois.remove(nearby_poi)
             st.rerun()
@@ -493,17 +505,19 @@ if map_data and map_data.get("last_clicked"):
         # Check for nearby sleeping place
         nearby_sleep = find_nearby(click_latlon, st.session_state.suggested_sleeping or [])
         if nearby_sleep:
-            st.session_state.points.insert(
-                -1,
-                Point(
-                    nearby_sleep.lat,
-                    nearby_sleep.lon,
-                    nearby_sleep.short_desc,
-                    type="sleep",
-                ),
+            new_sleep = Point(
+                nearby_sleep.lat,
+                nearby_sleep.lon,
+                nearby_sleep.short_desc,
+                type="sleep"
+            )
+            st.session_state.points = insert_multiple_points_logically(
+                st.session_state.points,
+                [new_sleep]
             )
             st.session_state.suggested_sleeping.remove(nearby_sleep)
             st.rerun()
+
 
 
 # Instructions

@@ -8,9 +8,9 @@ from typing import NamedTuple
 from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
-from src.db_utils import session
-from src.enums import BikeType, RoadType
-from src.weights import BIKE_TYPE_WEIGHTS
+from db_utils import session
+from enums import BikeType, RoadType
+from weights import BIKE_TYPE_WEIGHTS
 
 
 class Point(NamedTuple):
