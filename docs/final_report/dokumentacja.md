@@ -50,6 +50,12 @@ Celem projektu była implementacja aplikacji pozwalającej na planowanie wielodn
 
 ### Wyznaczanie trasy
 
+Wyznaczanie trasy oparte jest o dwukierunkowy algorytm A* oraz jego implementację w rozszerzeniu `pgrouting` dla PostgreSQL. Pozwala on wyznaczyć (w przybliżeniu) najtańszą ścieżkę między dwoma punktami. Uruchomienie algorytmu wymaga podania:
+
+- Treści zapytania wydobywającego krawędzie grafu z bazy danych
+- Identyfikatora wierzchołka startowego
+- Identyfikatora wierzchołka końcowego
+
 #### Pobranie danych
 
 #### Algorytm A*
