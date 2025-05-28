@@ -1,4 +1,4 @@
-from src.enums import BikeType, FitnessLevel, RoadType
+from enums import BikeType, FitnessLevel, RoadType
 
 # arbitrary mapping
 BIKE_TYPE_WEIGHTS: dict[BikeType, dict[str, dict[FitnessLevel, float] | dict[RoadType, float]]] = {
