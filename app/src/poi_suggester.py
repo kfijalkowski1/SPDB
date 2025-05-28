@@ -1,11 +1,17 @@
 # poi_suggester.py
 # poi_suggester.py
+import json
 import random
-from engine import Point, get_closest_point
 
-def suggest_pois(bbox: tuple[float, float, float, float], n=5) -> list[Point]:
+from geojson.utils import coords  # type: ignore[import-untyped]
+from shapely.geometry import LineString  # type: ignore[import-untyped]
+
+from src.engine import Point, Route, get_closest_point
+
+
+def suggest_pois(bbox: tuple[float, float, float, float], n: int = 5) -> list[Point]:
     min_lat, min_lon, max_lat, max_lon = bbox
-    pois = set()
+    pois: set[Point] = set()
     attempts = 0
     max_attempts = n * 3
 
@@ -23,9 +29,10 @@ def suggest_pois(bbox: tuple[float, float, float, float], n=5) -> list[Point]:
 
     return list(pois)
 
-def suggest_sleeping_places(bbox: tuple[float, float, float, float], n=3) -> list[Point]:
+
+def suggest_sleeping_places(bbox: tuple[float, float, float, float], n: int = 5) -> list[Point]:
     min_lat, min_lon, max_lat, max_lon = bbox
-    sleep_points = set()
+    sleep_points: set[Point] = set()
     attempts = 0
     max_attempts = n * 3
 
@@ -44,8 +51,11 @@ def suggest_sleeping_places(bbox: tuple[float, float, float, float], n=3) -> lis
     return list(sleep_points)
 
 
-def get_route_bounds(route):
-    all_coords = [coord for segment in route for coord in segment]
-    lats = [pt[0] for pt in all_coords]
-    lons = [pt[1] for pt in all_coords]
+def get_max_bounds_from_routes(
+    routes: list[Route],
+) -> tuple[float, float, float, float]:
+    route_bounds = [LineString(coords(json.loads(r.geojson))).bounds for r in routes]
+
+    lons = [pt[0] for pt in route_bounds] + [pt[2] for pt in route_bounds]
+    lats = [pt[1] for pt in route_bounds] + [pt[3] for pt in route_bounds]
     return min(lats), min(lons), max(lats), max(lons)

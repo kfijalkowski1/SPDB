@@ -9,7 +9,7 @@ COPY .streamlit /app/.streamlit
 
 RUN --mount=type=cache,target=/root/.cache/uv \
   uv sync --frozen --no-install-project --no-dev
-COPY code/ /app/code
+COPY src/ /app/src
 
 RUN --mount=type=cache,target=/root/.cache/uv \
   uv sync --frozen --no-dev
@@ -22,5 +22,5 @@ EXPOSE 8501
 WORKDIR /app
 
 # Run the Streamlit app with auto reload
-CMD ["watchmedo", "auto-restart", "--patterns=*.py", "--directory=/app/code", "--recursive", \
-  "--", "streamlit", "run", "./code/visualizer.py", "--server.port=8501", "--server.address=0.0.0.0" ]
+CMD ["watchmedo", "auto-restart", "--patterns=*.py", "--directory=/app/src", "--recursive", \
+  "--", "streamlit", "run", "./src/visualizer.py", "--server.port=8501", "--server.address=0.0.0.0" ]

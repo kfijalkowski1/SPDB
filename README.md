@@ -34,6 +34,14 @@ Note that the `importer` service will in `Waiting` state until it finishes impor
 docker compose logs --follow importer
 ```
 
+Run locally with debugger:
+
+```shell
+debugpy --listen 5678 -m streamlit run src/visualizer.py --server.port 2000
+```
+
+If you're using VS Code, check `.vscode/launch.json` to attach the debugger
+
 ### Note on importing routes
 
 This is both a compute-heavy and memory-heavy operation. Ensure you have plenty of RAM (32 is the minimum) and time. On an i7 8700 with 32GB of RAM importing the entire Poland takes roughly 1h 45min and requires swapping (at least that's what I saw - even though the actual RAM usage was not that high, all RAM was used by buffered pages which OS refused to clean up, hence swapping was needed). **If you only need a single voivodeship, limit the number of files loaded in [import_osm.sh](db/osm_imports/import_osm.sh)**. 
