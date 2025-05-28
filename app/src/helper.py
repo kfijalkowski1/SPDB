@@ -6,7 +6,7 @@ import json
 from enums import BikeType, FitnessLevel, RoadType
 from weights import BIKE_TYPE_WEIGHTS
 from typing import List
-from engine import Point, Route
+from engine import Point, Route, PointTypes
 
 
 
@@ -125,7 +125,7 @@ def split_route_by_sleeping_points(points: list[Point]) -> list[list[Point]]:
 
     for point in points:
         current_segment.append(point)
-        if point.type == "sleep":
+        if point.type == PointTypes.SLEEPING:
             segments.append(current_segment)
             current_segment = [point]  # start next day from this sleep point
 

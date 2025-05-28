@@ -8,7 +8,7 @@ import streamlit as st
 from streamlit_extras.stylable_container import stylable_container  # type: ignore[import-untyped]
 from streamlit_folium import st_folium  # type: ignore[import-untyped]
 
-from engine import Point, build_routes_multiple, get_closest_point
+from engine import Point, PointTypes, build_routes_multiple, get_closest_point
 from enums import BikeType, FitnessLevel, RoadType
 from helper import (
     calculate_day_endpoints,
@@ -113,7 +113,7 @@ with map_col:
             color = "orange"
             tooltip = point.short_desc
 
-        if point.type == "sleep" and point not in (st.session_state.suggested_sleeping or []):
+        if point.type == PointTypes.SLEEPING and point not in (st.session_state.suggested_sleeping or []):
             folium.Marker(
                 location=(point.lat, point.lon),
                 icon=folium.Icon(color="darkblue", icon="bed", prefix="fa"),
@@ -443,17 +443,6 @@ with config_col:
                             all_sleeping_places = []
                             SLEEP_SEARCH_RADIUS_DEG = 0.1
 
-                            for endpoint in day_endpoints:
-                                sleep_bbox = (
-                                    float(endpoint.lat) - SLEEP_SEARCH_RADIUS_DEG,
-                                    float(endpoint.lon) - SLEEP_SEARCH_RADIUS_DEG,
-                                    float(endpoint.lat) + SLEEP_SEARCH_RADIUS_DEG,
-                                    float(endpoint.lon) + SLEEP_SEARCH_RADIUS_DEG,
-                                )
-                                sleeping_places = suggest_sleeping_places(sleep_bbox)
-                                all_sleeping_places.extend(sleeping_places)
-                                # sleeping_places = suggest_sleeping_places(sleep_bbox)
-                                # all_sleeping_places.extend(sleeping_places)
                             with concurrent.futures.ThreadPoolExecutor() as executor:
                                 suggested_pois_future = executor.submit(suggest_pois, pois_bbox)
                                 future_sleep_places = {
@@ -475,16 +464,6 @@ with config_col:
                                     print(f"Error fetching sleeping places: {str(e)}")
                                     print(traceback.format_exc())
 
-                            # for endpoint in day_endpoints:
-                            #     sleep_bbox = (
-                            #         float(endpoint.lat) - SLEEP_SEARCH_RADIUS_DEG,
-                            #         float(endpoint.lon) - SLEEP_SEARCH_RADIUS_DEG,
-                            #         float(endpoint.lat) + SLEEP_SEARCH_RADIUS_DEG,
-                            #         float(endpoint.lon) + SLEEP_SEARCH_RADIUS_DEG,
-                            #     )
-                            #     sleeping_places = suggest_sleeping_places(sleep_bbox)
-                            #     all_sleeping_places.extend(sleeping_places)
-
                             st.session_state.suggested_sleeping = all_sleeping_places
                             st.session_state.selected_sleeping = set()
                             st.session_state.suggested_pois = suggested_pois
@@ -492,10 +471,10 @@ with config_col:
 
                             st.success("Route generated successfully!")
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"Error generating route: {str(e)}")
-                            print(e)
-                            print(traceback.format_exc())
+                    except Exception as e:
+                        st.error(f"Error generating route: {str(e)}")
+                        print(e)
+                        print(traceback.format_exc())
             if st.session_state.segment_routes:
                 print("Downloading GPX")
                 # Flatten the segment routes into a single list of Route objects
@@ -576,7 +555,7 @@ if map_data and map_data.get("last_clicked"):
                 nearby_sleep.lat,
                 nearby_sleep.lon,
                 nearby_sleep.short_desc,
-                type="sleep"
+                type=PointTypes.SLEEPING
             )
             st.session_state.points = insert_multiple_points_logically(
                 st.session_state.points,

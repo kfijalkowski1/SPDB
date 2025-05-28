@@ -17,7 +17,7 @@ from weights import BIKE_TYPE_WEIGHTS
 from enum import Enum
 
 class PointTypes(Enum):
-    SLEEPING = "sleeping"
+    SLEEPING = "sleep"
     POI = "poi"
 
 
