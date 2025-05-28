@@ -19,9 +19,47 @@ Celem projektu była implementacja aplikacji pozwalającej na planowanie wielodn
 
 ## Architektura rozwiązania
 
+Aplikacja została zaimplementowana z wykorzystaniem biblioteki Streamlit dla języka Python. Jako bazę danych wykorzystano PostgreSQL w wersji 17 z rozszerzeniami PostGIS i pgrouting. Do wyszukiwania punktów zwiedzania oraz noclegów skorzystano z Overpass API.
+
 ### Model danych
 
-<!-- Topologia sieci reprezentowana jest w dwóch tabelach: jedna przechowuje krawędzie grafu, a druga jego wierzchołki. Graf  -->
+Do reprezentacji topologii sieci wykorzystano dwie tabele: `ways` oraz `ways_vertices_pgr`
+
+![Model danych](erd.png){ width=400 }
+
+Tabela `ways` przechowuje krawędzie grafu oraz powiązane z nimi informacje potrzebne do wyznaczenia ścieżki przez algorytm A*, między innymi:
+
+- `gid` - identyfikator krawędzi grafu
+- `osm_id` - identyfikator drogi z której powstała dana krawędź grafu w OpenStreetMap
+- `length_m` - długość odcinka w metrach
+- `source` / `target` - identyfikatory wierzchołków na końcach krawędzi
+- `onr_way` - wskazanie, czy krawędź jest możliwa do przebycia tylko w jednym kierunku
+- `the_geom` - geometria danego odcinka (`LineString`)
+- `road_type` - rodzaj drogi
+- `grid_lat` / `grid_lon` - współrzędne geograficzne środka geometrii
+
+Założone zostały następujące indeksy na następujące kolumny / wyrażenia:
+
+- `gid, road_type` - b-drzewo
+- `grid_lat` - b-drzewo
+- `grid_lon` - b-drzewo
+- `source` - b-drzewo
+- `target` - b-drzewo
+- `the_geom` - `gist`
+- `the_geom::geography` - `gist`
+
+Tabela `ways_vertices_pgr` przechowuje wierzchołki grafu wraz z ich współrzędnymi (`lat`, `lon`) i geometrią `the_geom`. Indeksy typu `gist` zostały założone na `the_geom` oraz `the_geom::geography`.
+
+Model danych rozróżnia sześć typów dróg wynikających z tagów w OpenStreetMap:
+
+- `roads_primary` - drogi krajowe
+- `roads_secondary` - drogi wojewódzkie
+- `roads_paved` - pozostałe drogi, utwardzone
+- `roads_unpaved` - pozostałe drogi, nieutwardzone
+- `cycleways` - drogi pozwalające na ruch rowerowy
+- `roads_unknown_surface` - pozostałe
+
+Mapowanie tagów na typy dróg omówione zostanie w następnej sekcji.
 
 ### Ładowanie danych
 
@@ -32,12 +70,14 @@ Celem projektu była implementacja aplikacji pozwalającej na planowanie wielodn
 2. Budowa topologii sieci
   - Dla każdego pliku zawierającego mapę danego województwa wykonywane są następujące akcje:
     - Za pomocą narzędzia `osmfilter` usuwane są tagi nieprzydatne z punktu widzenia projektu, w wyniku czego w pliku pozostają jedynie dane dotyczące dróg - pozwala to zmniejszyć rozmiar pliku o około 65%. 
+      - Drogi warte rozpatrzenia wyznaczane są na podstawie wartości tagów `cycleway`, `tracktype` oraz `highway`
     - Plik ładowany jest do bazy danych i jednocześnie budowana jest topologia sieci, za co odpowiada narzędzie `osm2pgrouting`. Tym samym, drogi obecne w oryginalnych danych z OpenStreetMap mogą być dzielone na mniejsze odcinki lub scalane, przez co niektóre drogi z OSM nie posiadają odwzorowania w bazie, a innym odpowiada kilka krawędzi grafu. Na tym etapie pomijane jest tworzenie indeksów. Dane umieszczane są w tabelach `ways` i `ways_vertices_pgr`. Należy zaznaczyć, że struktura tabeli zdefiniowana jest przez narzędzie `osm2pgrouting`, w związku z czym niektóre wymagane kolumny muszą zostać dodane później.
     - Ten sam plik jest dodatkowo filtrowany narzędziem `osmfilter` aby wyodrębnić z niego poszczególne typy dróg, a następnie ładowany jest do tabeli `planet_osm_line` za pomocą narzędzia `osm2pgsql`
-    - Na podstawie idektyfikatorów obiektów w OSM obecnych w obu tabelach uzupełniane są informacje o klasie drogi w tabeli `ways`
+    - Na podstawie identyfikatorów obiektów w OSM obecnych w obu tabelach uzupełniane są informacje o typie drogi w tabeli `ways`
+      - Typ drogi wyznaczany jest na podstawie wartości tagów `highway`, `cycleway` i `surface` (lub faktu ich braku)
 3. Analiza danych i optymalizacja modelu
   - Graf jest analizowany pod kątem obecności izolowanych podgrafów, następnie wszystkie izolowane podgrafy poza największym są usuwane (przy ładowaniu mapy całej Polski wiąże się to z usunięciem około 150.000 z 11.000.000 krawędzi)
-  - Dla każdej krawędzi grafu wyznaczany jest jej środek dla szybszego wyszukiwania
+  - Dla każdej krawędzi grafu wyznaczany jest jej środek dla szybszego wyszukiwania (wyszukiwanie krawędzi dla algorytmu A* omówiono w kolejnej sekcji)
   - Tworzone są indeksy
   - Aktualizowane są statystyki optymalizatora
 
@@ -110,16 +150,16 @@ gdzie:
 - $t$ - czas
 - $d$ - długość odcinka
 - $v_b$ - prędkość osiągana w korzystnych warunkach
-- $ration$ - współczynnik skalujący prędkość
+- $ratio$ - współczynnik skalujący prędkość
 - $biketype$ - typ roweru
-- $raodtype$ - typ drogi
+- $roadtype$ - typ drogi
 - $fitness$ - poziom sprawności fizycznej.
 
 Ponieważ zapytanie do bazy danych zwraca dystans pokonywany drogami poszczególnych typów, możliwe jest obliczenie czasu potrzebnego na przejazd między każdą parą punktów na trasie. Tym samym, możliwe jest także obliczenie dystansu pokonywanego każdego dnia i zasugerowanie użytkownikowi modyfikacji trasy.
 
 ### Dobór punktów zwiedzania oraz noclegów
 
-Punkty są dobierane z użyciem overpassAPI do którego są wysyłane zapytanie a konkrente typy punktów takich jak: muzea, zamki, ruiny itp. Analogicznie wyszukiwane są noclegi które są wyszukiwane w stałej odległości od punktów które są N-tym kilometrem trasy, gdzie N to zadany dzienny dystans.
+Punkty są dobierane z użyciem overpassAPI do którego są wysyłane zapytanie a konkretne typy punktów takich jak: muzea, zamki, ruiny itp. Analogicznie wyszukiwane są noclegi które są wyszukiwane w stałej odległości od punktów które są N-tym kilometrem trasy, gdzie N to zadany dzienny dystans.
 
 ### Interfejs użytkownika
 
@@ -129,7 +169,10 @@ Rozwiązanie to, mimo pewnych ograniczeń w zakresie płynności interakcji i es
 
 ### Ograniczenia
 
+Głównym ograniczeniem aplikacji jest wydajność - po załadowaniu całej Polski w bazie danych znajduje się około 11 milionów krawędzi, co nawet przy zredukowaniu ilości danych przekazywanych do algorytmu A* istotnie wpływa na szybkość działania. Kosztowne jest nie tylko wyznaczenie trasy, ale i pobranie danych - przy małych dystansach optymalizator decyduje się na skorzystanie z indeksu bitmapowego i na odpowiednio szybkiej maszynie jest w stanie pobrać dane w czasie poniżej jednej sekundy, ale przy dużych dystansach często wybiera sekwencyjny przegląd tabeli, który może trwać nawet kilka sekund.
+
 ### Możliwości rozwoju
 
-- kolejność poi floyd warshall
-- użycie 
+- Rozdzielenie pojęcia *typ drogi* na klasę drogi (jak istotna) oraz jej nawierzchnię
+- Wyświetlanie nawierzchni drogi na poszczególnych odcinkach na mapie
+- Poprawa jakości interakcji z mapą w interfejsie użytkownika
