@@ -117,13 +117,9 @@ gdzie:
 
 Ponieważ zapytanie do bazy danych zwraca dystans pokonywany drogami poszczególnych typów, możliwe jest obliczenie czasu potrzebnego na przejazd między każdą parą punktów na trasie. Tym samym, możliwe jest także obliczenie dystansu pokonywanego każdego dnia i zasugerowanie użytkownikowi modyfikacji trasy.
 
-### Dobór punktów zwiedzania
+### Dobór punktów zwiedzania oraz noclegów
 
-TODO
-
-### Dobór noclegów
-
-TODO
+Punkty są dobierane z użyciem overpassAPI do którego są wysyłane zapytanie a konkrente typy punktów takich jak: muzea, zamki, ruiny itp. Analogicznie wyszukiwane są noclegi które są wyszukiwane w stałej odległości od punktów które są N-tym kilometrem trasy, gdzie N to zadany dzienny dystans.
 
 ### Użytkowanie 
 
