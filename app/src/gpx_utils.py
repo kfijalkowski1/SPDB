@@ -3,7 +3,7 @@ from typing import Any
 
 import gpxpy.gpx
 
-from engine import Route
+from engine import Route, PointTypes
 
 
 def export_to_gpx(routes: list[Route], filename: str) -> bytes:
@@ -14,6 +14,7 @@ def export_to_gpx(routes: list[Route], filename: str) -> bytes:
         routes: List of Route objects containing start, end, and geojson data
         filename: Name of the output GPX file
     """
+    
     # Create a new GPX object
     gpx = gpxpy.gpx.GPX()
     
@@ -193,9 +194,9 @@ def export_routes_with_pois_to_gpx(routes: list[Route], pois: list[Any], filenam
         # Determine symbol based on POI type
         symbol = "Information"  # Default symbol
         if hasattr(poi, 'type'):
-            if poi.type == "sleep":
+            if poi.type == PointTypes.SLEEPING:
                 symbol = "Lodging"
-            elif poi.type == "poi":
+            elif poi.type == PointTypes.POI:
                 symbol = "Scenic Area"
         
         poi_wpt = gpxpy.gpx.GPXWaypoint(

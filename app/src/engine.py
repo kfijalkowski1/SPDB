@@ -17,7 +17,7 @@ from weights import BIKE_TYPE_WEIGHTS
 from enum import Enum
 
 class PointTypes(Enum):
-    SLEEPING = "sleeping"
+    SLEEPING = "sleep"
     POI = "poi"
 
 
@@ -93,10 +93,10 @@ def _find_path_astar(
     factor_c = x_b * y_a - x_a * y_b
     factor_bott = math.sqrt(factor_a**2 + factor_b**2)
 
-    lon_lower_bound = min(start_point.lon, end_point.lon)
-    lon_upper_bound = max(start_point.lon, end_point.lon)
-    lat_lower_bound = min(start_point.lat, end_point.lat)
-    lat_upper_bound = max(start_point.lat, end_point.lat)
+    lon_lower_bound = min(float(start_point.lon), float(end_point.lon))
+    lon_upper_bound = max(float(start_point.lon), float(end_point.lon))
+    lat_lower_bound = min(float(start_point.lat), float(end_point.lat))
+    lat_upper_bound = max(float(start_point.lat), float(end_point.lat))
 
     ab_dist = math.sqrt((x_a - x_b) ** 2 + (y_a - y_b) ** 2)
 
