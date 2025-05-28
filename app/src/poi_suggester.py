@@ -6,7 +6,7 @@ import random
 from geojson.utils import coords  # type: ignore[import-untyped]
 from shapely.geometry import LineString  # type: ignore[import-untyped]
 
-from src.engine import Point, Route, get_closest_point
+from engine import Point, Route, get_closest_point
 
 
 def suggest_pois(bbox: tuple[float, float, float, float], n: int = 5) -> list[Point]:
