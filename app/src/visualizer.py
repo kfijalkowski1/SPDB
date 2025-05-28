@@ -425,14 +425,19 @@ with config_col:
                             import concurrent.futures
 
                             pois_bbox = get_max_bounds_from_routes([r for seg in segment_routes for r in seg])
-                            # st.session_state.suggested_pois = suggest_pois(pois_bbox) # todo remove
+                            st.session_state.suggested_pois = suggest_pois(pois_bbox)
                             st.session_state.selected_pois = set()
 
 
                             # Calculate day endpoints based on daily distance
                             all_routes = [route for seg in segment_routes for route in seg]
-                            daily_distance_m = st.session_state.daily_m
-                            day_endpoints = calculate_day_endpoints(all_routes, daily_distance_m)
+
+                            # For now, use the first route to calculate day endpoints
+                            # TODO: Handle multiple routes better
+                            if all_routes:
+                                day_endpoints = calculate_day_endpoints(all_routes[0], st.session_state.daily_m)
+                            else:
+                                day_endpoints = []
 
                             # Find sleeping places for each day endpoint
                             all_sleeping_places = []
@@ -445,6 +450,8 @@ with config_col:
                                     float(endpoint.lat) + SLEEP_SEARCH_RADIUS_DEG,
                                     float(endpoint.lon) + SLEEP_SEARCH_RADIUS_DEG,
                                 )
+                                sleeping_places = suggest_sleeping_places(sleep_bbox)
+                                all_sleeping_places.extend(sleeping_places)
                                 # sleeping_places = suggest_sleeping_places(sleep_bbox)
                                 # all_sleeping_places.extend(sleeping_places)
                             with concurrent.futures.ThreadPoolExecutor() as executor:
