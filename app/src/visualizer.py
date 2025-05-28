@@ -402,8 +402,8 @@ with config_col:
                 st.subheader("Route Configuration")
                 submitted = st.form_submit_button("Generate Route")
                 if submitted:
-                    with st.spinner("Generating optimal route..."):
-                        try:
+                    try:
+                        with st.spinner("Generating optimal route..."):
                             segment_points = split_route_by_sleeping_points(st.session_state.points)
                             segment_routes = []
                             route_segments = []
@@ -421,9 +421,11 @@ with config_col:
                             st.session_state.segment_routes = segment_routes
                             st.session_state.route_segments = route_segments
 
+                        with st.spinner("Waiting for Overpass..."):
+                            import concurrent.futures
+
                             pois_bbox = get_max_bounds_from_routes([r for seg in segment_routes for r in seg])
-                            st.session_state.suggested_pois = suggest_pois(pois_bbox)
-                            st.session_state.selected_pois = set()
+
 
                             # Calculate day endpoints based on daily distance
                             all_routes = [route for seg in segment_routes for route in seg]
@@ -433,26 +435,49 @@ with config_col:
                             all_sleeping_places = []
                             SLEEP_SEARCH_RADIUS_DEG = 0.1
 
-                            for endpoint in day_endpoints:
-                                sleep_bbox = (
-                                    float(endpoint.lat) - SLEEP_SEARCH_RADIUS_DEG,
-                                    float(endpoint.lon) - SLEEP_SEARCH_RADIUS_DEG,
-                                    float(endpoint.lat) + SLEEP_SEARCH_RADIUS_DEG,
-                                    float(endpoint.lon) + SLEEP_SEARCH_RADIUS_DEG,
-                                )
-                                sleeping_places = suggest_sleeping_places(sleep_bbox)
-                                all_sleeping_places.extend(sleeping_places)
+                            with concurrent.futures.ThreadPoolExecutor() as executor:
+                                suggested_pois_future = executor.submit(suggest_pois, pois_bbox)
+                                future_sleep_places = {
+                                    executor.submit(suggest_sleeping_places, (
+                                        float(endpoint.lat) - SLEEP_SEARCH_RADIUS_DEG,
+                                        float(endpoint.lon) - SLEEP_SEARCH_RADIUS_DEG,
+                                        float(endpoint.lat) + SLEEP_SEARCH_RADIUS_DEG,
+                                        float(endpoint.lon) + SLEEP_SEARCH_RADIUS_DEG,
+                                    )): endpoint for endpoint in day_endpoints
+                                }
+                            suggested_pois = suggested_pois_future.result()
+                            all_sleeping_places = []
+                            # Collect all sleeping places from futures
+                            for future in concurrent.futures.as_completed(future_sleep_places):
+                                try:
+                                    sleeping_places = future.result()
+                                    all_sleeping_places.extend(sleeping_places)
+                                except Exception as e:
+                                    print(f"Error fetching sleeping places: {str(e)}")
+                                    print(traceback.format_exc())
+
+                            # for endpoint in day_endpoints:
+                            #     sleep_bbox = (
+                            #         float(endpoint.lat) - SLEEP_SEARCH_RADIUS_DEG,
+                            #         float(endpoint.lon) - SLEEP_SEARCH_RADIUS_DEG,
+                            #         float(endpoint.lat) + SLEEP_SEARCH_RADIUS_DEG,
+                            #         float(endpoint.lon) + SLEEP_SEARCH_RADIUS_DEG,
+                            #     )
+                            #     sleeping_places = suggest_sleeping_places(sleep_bbox)
+                            #     all_sleeping_places.extend(sleeping_places)
 
                             st.session_state.suggested_sleeping = all_sleeping_places
                             st.session_state.selected_sleeping = set()
+                            st.session_state.suggested_pois = suggested_pois
+                            st.session_state.selected_pois = set()
 
                             st.success("Route generated successfully!")
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"Error generating route: {str(e)}")
-                            print(e)
-                            print(traceback.format_exc())
-            st.download_button("Download GPX", export_to_gpx(st.session_state.segment_routes, "route.gpx"),mime="application/gpx+xml")
+                    except Exception as e:
+                        st.error(f"Error generating route: {str(e)}")
+                        print(e)
+                        print(traceback.format_exc())
+            # st.download_button("Download GPX", export_to_gpx(st.session_state.segment_routes, "route.gpx"),mime="application/gpx+xml")
 
     with tab2:
         if st.session_state.suggested_pois:

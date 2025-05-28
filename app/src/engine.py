@@ -84,8 +84,8 @@ def _find_path_astar(
     end_point: Point,
     road_type_weights: dict[RoadType, float],
 ) -> Route:
-    x_a, y_a = start_point.lon, start_point.lat
-    x_b, y_b = end_point.lon, end_point.lat
+    x_a, y_a = float(start_point.lon), float(start_point.lat)
+    x_b, y_b = float(end_point.lon), float(end_point.lat)
     print(x_a, y_a)
     print(x_b, y_b)
     factor_a = y_b - y_a

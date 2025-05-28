@@ -11,7 +11,7 @@ from shapely.geometry import LineString  # type: ignore[import-untyped]
 from engine import Point, Route, PointTypes
 
 
-def suggest_pois(bbox: tuple[float, float, float, float], n: int = 100) -> list[Point]:
+def suggest_pois(bbox: tuple[float, float, float, float]) -> list[Point]:
     """
     Suggest Points of Interest using the Overpass API within the given bounding box.
 
@@ -23,6 +23,8 @@ def suggest_pois(bbox: tuple[float, float, float, float], n: int = 100) -> list[
         List of Point objects representing interesting places
     """
     min_lat, min_lon, max_lat, max_lon = bbox
+    n = min(round((max_lat - min_lat) * (max_lon - min_lon) * 50), 100)
+    print(n)
 
     # Overpass API query to find various types of POIs
     overpass_query = f"""
@@ -51,7 +53,7 @@ def suggest_pois(bbox: tuple[float, float, float, float], n: int = 100) -> list[
         print("Waiting for Overpass API...")
         response = requests.post(overpass_url, data=overpass_query, timeout=35)
         response.raise_for_status()
-        print("Overpass API response received, req took", response.elapsed.total_seconds(), "seconds")
+        print("POIs: Overpass API response received, req took", response.elapsed.total_seconds(), "seconds")
 
         data = response.json()
         elements = data.get("elements", [])
@@ -124,6 +126,8 @@ def suggest_sleeping_places(bbox: tuple[float, float, float, float]) -> list[Poi
         response = requests.post(overpass_url, data=overpass_query, timeout=30)
         response.raise_for_status()
 
+        print("Sleeping places: Overpass API response received, req took", response.elapsed.total_seconds(), "seconds")
+
         data = response.json()
         elements = data.get("elements", [])
 
@@ -150,6 +154,9 @@ def suggest_sleeping_places(bbox: tuple[float, float, float, float]) -> list[Poi
             sleep_points.append(point)
 
 
+        # Randomly sample at most 20 results
+        if len(sleep_points) > 20:
+            sleep_points = random.sample(sleep_points, 20)
         return sleep_points
 
     except (requests.RequestException, json.JSONDecodeError, KeyError) as e:
