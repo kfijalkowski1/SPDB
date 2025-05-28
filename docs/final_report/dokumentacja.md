@@ -121,10 +121,15 @@ Ponieważ zapytanie do bazy danych zwraca dystans pokonywany drogami poszczegól
 
 Punkty są dobierane z użyciem overpassAPI do którego są wysyłane zapytanie a konkrente typy punktów takich jak: muzea, zamki, ruiny itp. Analogicznie wyszukiwane są noclegi które są wyszukiwane w stałej odległości od punktów które są N-tym kilometrem trasy, gdzie N to zadany dzienny dystans.
 
-### Użytkowanie 
+### Interfejs użytkownika
+
+Interfejs użytkownika został zbudowany z wykorzystaniem biblioteki Streamlit, która pozwala na szybkie tworzenie interaktywnych aplikacji webowych w Pythonie, bez potrzeby angażowania złożonych frameworków frontendowych. Do obsługi mapy wykorzystano bibliotekę folium wraz z komponentem streamlit-folium, który umożliwia integrację map Leaflet z aplikacją. Dodatkowo, za pomocą streamlit-extras, możliwe było stylowanie elementów interfejsu, takich jak przyciski, kontenery i kolumny, co pozwoliło na jego lekkie dostosowanie wizualne.
+
+Rozwiązanie to, mimo pewnych ograniczeń w zakresie płynności interakcji i estetyki, pozwalało na bardzo sprawne i szybkie budowanie funkcjonalnego interfejsu. Konfiguracja UI była prosta i intuicyjna, co umożliwiło skupienie się przede wszystkim na logice aplikacji. Choć nie dorównuje elastycznością nowoczesnym frontendowym rozwiązaniom takim jak React z Bootstrapem czy Material UI, to w tym przypadku prostota była zdecydowaną zaletą.
 
 ### Ograniczenia
 
 ### Możliwości rozwoju
 
 - kolejność poi floyd warshall
+- użycie 
