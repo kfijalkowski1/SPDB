@@ -3,6 +3,8 @@
 import json
 import random
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import math
 
 import requests
 from geojson.utils import coords  # type: ignore[import-untyped]
@@ -11,55 +13,126 @@ from shapely.geometry import LineString  # type: ignore[import-untyped]
 from engine import Point, Route, PointTypes
 
 
-def suggest_pois(bbox: tuple[float, float, float, float]) -> list[Point]:
+def _calculate_bbox_area(bbox: tuple[float, float, float, float]) -> float:
+    """Calculate the area of a bounding box in square degrees."""
+    min_lat, min_lon, max_lat, max_lon = bbox
+    return (max_lat - min_lat) * (max_lon - min_lon)
+
+
+def _split_bbox(bbox: tuple[float, float, float, float], max_area: float = 0.01) -> list[tuple[float, float, float, float]]:
     """
-    Suggest Points of Interest using the Overpass API within the given bounding box.
-
+    Split a large bounding box into smaller chunks if it exceeds max_area.
+    
     Args:
-        bbox: Tuple of (min_lat, min_lon, max_lat, max_lon)
-        n: Number of POIs to return (default: 5)
-
+        bbox: Original bounding box (min_lat, min_lon, max_lat, max_lon)
+        max_area: Maximum area per chunk in square degrees (default: 0.01)
+    
     Returns:
-        List of Point objects representing interesting places
+        List of smaller bounding boxes
     """
     min_lat, min_lon, max_lat, max_lon = bbox
-    n = min(round((max_lat - min_lat) * (max_lon - min_lon) * 50), 100)
-    print(n)
+    area = _calculate_bbox_area(bbox)
+    
+    if area <= max_area:
+        return [bbox]
+    
+    # Calculate how many splits we need in each dimension
+    splits_needed = math.ceil(area / max_area)
+    splits_per_dim = math.ceil(math.sqrt(splits_needed))
+    
+    lat_step = (max_lat - min_lat) / splits_per_dim
+    lon_step = (max_lon - min_lon) / splits_per_dim
+    
+    chunks = []
+    for i in range(splits_per_dim):
+        for j in range(splits_per_dim):
+            chunk_min_lat = min_lat + i * lat_step
+            chunk_max_lat = min(min_lat + (i + 1) * lat_step, max_lat)
+            chunk_min_lon = min_lon + j * lon_step
+            chunk_max_lon = min(min_lon + (j + 1) * lon_step, max_lon)
+            
+            chunks.append((chunk_min_lat, chunk_min_lon, chunk_max_lat, chunk_max_lon))
+    
+    return chunks
 
-    # Overpass API query to find various types of POIs
+
+def _query_overpass_chunk(bbox: tuple[float, float, float, float]) -> list[Point]:
+    """
+    Query Overpass API for a single bounding box chunk.
+    
+    Args:
+        bbox: Bounding box (min_lat, min_lon, max_lat, max_lon)
+        max_results: Maximum number of results to return for this chunk
+    
+    Returns:
+        List of Point objects from this chunk
+    """
+    min_lat, min_lon, max_lat, max_lon = bbox
+    
+    # Optimized Overpass query with exact matches instead of regex
     overpass_query = f"""
-    [out:json][timeout:35];
+    [out:json][timeout:25];
     (
       // Tourist attractions
-      node["tourism"~"^(attraction|museum|castle|monument|viewpoint|zoo|aquarium|theme_park)$"]({min_lat},{min_lon},{max_lat},{max_lon});
-      way["tourism"~"^(attraction|museum|castle|monument|viewpoint|zoo|aquarium|theme_park)$"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["tourism"="attraction"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["tourism"="museum"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["tourism"="castle"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["tourism"="monument"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["tourism"="viewpoint"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["tourism"="zoo"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["tourism"="aquarium"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["tourism"="theme_park"]({min_lat},{min_lon},{max_lat},{max_lon});
+      
+      way["tourism"="attraction"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["tourism"="museum"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["tourism"="castle"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["tourism"="monument"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["tourism"="viewpoint"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["tourism"="zoo"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["tourism"="aquarium"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["tourism"="theme_park"]({min_lat},{min_lon},{max_lat},{max_lon});
       
       // Historic sites
-      node["historic"~"^(castle|monument|memorial|archaeological_site|ruins|fort)$"]({min_lat},{min_lon},{max_lat},{max_lon});
-      way["historic"~"^(castle|monument|memorial|archaeological_site|ruins|fort)$"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["historic"="castle"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["historic"="monument"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["historic"="memorial"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["historic"="archaeological_site"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["historic"="ruins"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["historic"="fort"]({min_lat},{min_lon},{max_lat},{max_lon});
+      
+      way["historic"="castle"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["historic"="monument"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["historic"="memorial"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["historic"="archaeological_site"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["historic"="ruins"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["historic"="fort"]({min_lat},{min_lon},{max_lat},{max_lon});
       
       // Natural features
-      node["natural"~"^(peak|volcano|cave_entrance|hot_spring|geyser)$"]({min_lat},{min_lon},{max_lat},{max_lon});
-      way["natural"~"^(peak|volcano|cave_entrance|hot_spring|geyser)$"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["natural"="peak"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["natural"="volcano"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["natural"="cave_entrance"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["natural"="hot_spring"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["natural"="geyser"]({min_lat},{min_lon},{max_lat},{max_lon});
+      
+      way["natural"="peak"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["natural"="volcano"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["natural"="cave_entrance"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["natural"="hot_spring"]({min_lat},{min_lon},{max_lat},{max_lon});
+      way["natural"="geyser"]({min_lat},{min_lon},{max_lat},{max_lon});
     );
     out center meta;
     """
 
-    print(overpass_query)
-
     try:
-        # Make request to Overpass API
         overpass_url = "http://overpass-api.de/api/interpreter"
-        print("Waiting for Overpass API...")
-        response = requests.post(overpass_url, data=overpass_query, timeout=35)
+        response = requests.post(overpass_url, data=overpass_query, timeout=30)
         response.raise_for_status()
-        print("POIs: Overpass API response received, req took", response.elapsed.total_seconds(), "seconds")
-
+        
         data = response.json()
         elements = data.get("elements", [])
-
+        
         pois: list[Point] = []
-
+        
         for element in elements:
             # Get coordinates (handle both nodes and ways)
             if element["type"] == "node":
@@ -74,19 +147,105 @@ def suggest_pois(bbox: tuple[float, float, float, float]) -> list[Point]:
             name = tags.get("name", "Unknown POI")
 
             # shorten name to max 20 characters
-            description = f"{name[:20]}..."
+            description = f"{name[:20]}..." if len(name) > 20 else name
 
             poi = Point(lat, lon, description, type=PointTypes.POI)
             pois.append(poi)
 
-            # Stop if we have enough POIs
-            if len(pois) >= n:
-                break
-
-        return pois[:n]
-
+        return pois
+        
     except (requests.RequestException, json.JSONDecodeError, KeyError) as e:
-        print(f"Error fetching POIs from Overpass API: {e}")
+        print(f"Error fetching POIs from chunk {bbox}: {e}")
+        return []
+
+
+def suggest_pois(bbox: tuple[float, float, float, float]) -> list[Point]:
+    """
+    Suggest Points of Interest using the Overpass API within the given bounding box.
+    Large bounding boxes are split into smaller chunks and queried in parallel.
+
+    Args:
+        bbox: Tuple of (min_lat, min_lon, max_lat, max_lon)
+
+    Returns:
+        List of Point objects representing interesting places
+    """
+    min_lat, min_lon, max_lat, max_lon = bbox
+    bbox_area = _calculate_bbox_area(bbox)
+    
+    # Calculate target number of POIs based on area
+    n = min(round(bbox_area * 50), 100)
+    print(f"Target POIs: {n}, Bbox area: {bbox_area:.4f} sq degrees")
+    
+    # Split large bounding boxes into smaller chunks
+    chunks = _split_bbox(bbox, max_area=max(0.8, bbox_area / 9))
+    print(f"Split bbox into {len(chunks)} chunks for parallel processing")
+    
+    # Calculate max results per chunk
+    
+    # Query chunks in parallel using ThreadPoolExecutor
+    all_pois: list[Point] = []
+    
+    with ThreadPoolExecutor() as executor:
+        # Submit all chunk queries
+        future_to_chunk = {
+            executor.submit(_query_overpass_chunk, chunk): chunk 
+            for chunk in chunks
+        }
+        
+        print("Waiting for Overpass API responses...")
+        
+        # Collect results as they complete
+    for future in as_completed(future_to_chunk):
+        chunk = future_to_chunk[future]
+        try:
+            chunk_pois = future.result()
+            all_pois.extend(chunk_pois)
+            print(f"Chunk {chunk} returned {len(chunk_pois)} POIs")
+        except Exception as e:
+            print(f"Error processing chunk {chunk}: {e}")
+    
+    # Remove duplicates (POIs that might appear in multiple chunks)
+    unique_pois = _deduplicate_pois(all_pois)
+    
+    # Randomly sample to target number if we have too many
+    if len(unique_pois) > n:
+        unique_pois = random.sample(unique_pois, n)
+    
+    print(f"Total unique POIs found: {len(unique_pois)}")
+    return unique_pois
+
+
+def _deduplicate_pois(pois: list[Point]) -> list[Point]:
+    """
+    Remove duplicate POIs based on proximity (within ~50 meters).
+    
+    Args:
+        pois: List of POI points
+        
+    Returns:
+        List of unique POI points
+    """
+    if not pois:
+        return []
+    
+    unique_pois = []
+    min_distance_deg = 0.0005  # Approximately 50 meters
+    
+    for poi in pois:
+        is_duplicate = False
+        for unique_poi in unique_pois:
+            # Simple distance check (Euclidean distance in degrees)
+            lat_diff = abs(poi.lat - unique_poi.lat)
+            lon_diff = abs(poi.lon - unique_poi.lon)
+            if lat_diff < min_distance_deg and lon_diff < min_distance_deg:
+                is_duplicate = True
+                break
+        
+        if not is_duplicate:
+            unique_pois.append(poi)
+    
+    return unique_pois
 
 
 
