@@ -45,12 +45,9 @@ Celem projektu była implementacja aplikacji pozwalającej na planowanie wielodn
   - Tworzone są indeksy
   - Aktualizowane są statystyki optymalizatora
 
+### Wyznaczanie tras
 
-### 
-
-### Wyznaczanie trasy
-
-#### Pobranie danych
+Trasa przechodząca przez zadane punkty w określonej kolejności wyznaczana jest jako złączenie tras między kolejnymi parami punktów. W aplikacji za wyznaczanie tras pomiędzy parami punktów odpowiada dwukierunkowy algorytm A*, którego sposób wykorzystania opisany został w kolejnych sekcjach. Aby osiągnąć lepszą wydajność, trasy między wszystkimi rozpatrywanymi parami punktów wyznaczane są przez równoległe zapytania do bazy danych, po czym wyniki są łączone i prezentowane użytkownikowi.
 
 #### Algorytm A*
 
@@ -81,7 +78,7 @@ gdzie $m$ to margines, a $d$ to odległość między punktem startowym i końcow
 
 Odległość między środkami krawędzi grafu a odcinkiem łączącym początek i koniec wytyczanej ścieżki *nie* jest obliczana w oparciu o predykaty przestrzenne PostGIS, gdyż takie rozwiązanie nie zapewniało oczekiwanej wydajności - w przypadku wyznaczania trasy długości ok. 200km pobieranie krawędzi grafu trwało blisko dwukrotnie dłużej, niż faktyczne działanie algorytmu A*. Zamiast tego odległości obliczane są w sposób bezpośredni z wykorzystaniem odpowiednio przekształconego równania odległości punktu od prostej przebiegającej przez dwa punktu, gdzie większość współczynników równania obliczana jest przez aplikację i podawana jako parametry zapytani. Wykorzystywane są współrzędne geograficzne środków punktów zapisane uprzednio jako typ `numeric` w PostgreSQL, po pozwala ograniczyć narzut na konwersję typów. Takie podejście pozwala ograniczyć liczbę zwracanych krawędzi przy pomijalnie niskim koszcie obliczenia predykatów (pod warunkiem założenia indeksu typu B-drzewo na kolumny z współrzędnymi geograficznymi środków krawędzi grafu).
 
-#### Wyznaczanie wag krawędzi
+#### Obliczanie kosztów krawędzi
 
 Ponieważ na koszta krawędzi wpływa wybrany typ roweru, muszą być one obliczone w trakcie zapytania. Koszt każdej krawędzi obliczana jest jako iloczyn jej długości i współczynnika kary zależnego od wybranego typu roweru i rodzaju drogi. Przykładowo, dla roweru szosowego współczynnik będzie wynosił $1$ dla dróg utwardzonych niebędących drogami krajowymi i wojewódzkimi, ale jego wartość dla dróg nieutwardzonych wyniesie $3$, w związku z czym algorytm będzie je wybierał tylko w zupełnej ostateczności. Współczynniki dobierane były eksperymentalnie dla każdego typu roweru wg następujących preferencji:
 
@@ -93,12 +90,49 @@ Ponieważ na koszta krawędzi wpływa wybrany typ roweru, muszą być one oblicz
 
 Koszta przejazdu drogi w obie strony są równe dla dróg dwukierunkowych, a przypadku dróg jednokierunkowych koszt przejazdu w przeciwną stronę przemnażany jest przez $-1$ (droga nieprzejezdna).
 
-#### Dodatkowe przetwarzanie
+#### Końcowe przetwarzanie
 
 Funkcja `pgr_bdastar` zwraca kolejne krawędzi wchodzące w skład najkrótszej ścieżki (lub nie zwraca nic jeśli nie udało się znaleźć ścieżki). W ramach zapytania obliczane i przekazywane do aplikacji są następujące dane:
 
-- Złączenie geometrii wszystkich krawędzi grafu w jedną ścieżkę zapisane w formacie GeoJSON
+- Złączenie geometrii wszystkich krawędzi grafu w jedną ścieżkę zapisane w formacie *GeoJSON*
 - Łączna długość trasy
 - Łączny dystans pokonywany drogami każdego z typów
 
+### Szacowanie czas przejazdu
+
+Poza podaniem typu roweru użytkownik ma możliwość podania planowanej długości wycieczki (w dniach), planowanego dystansu pokonywanego dziennie i oceny swojej sprawności fizycznej w pięciostopniowej skali. Te parametry nie wpływają na działanie algorytmu, ale pozwalaja użytkownikowi uzyskać lepszy wgląd w zaplanowaną trasę i nanieść ewentualne poprawki.
+
+Wybór typu roweru oraz ocena zdolności fizycznej wpływają na oszacowanie średniej prędkości możliwej do osiągnięcia, a co za tym idzie, szacunkowy czas potrzebny do pokonania trasy. Dla każdego typu roweru na podstawie wiedzy domenowej dobrano prędkość możliwą do rozwinięcia w zależności od poziomu sprawności fizycznej. Dodatkowo, dla każdego typu roweru i każdego rodzaju drogi ustalono współczynnik skalujący możliwą do osiągnięcia prędkość nie większy niż $1$. Przykładowo, w przypadku roweru szosowego współczynnik będzie znacznie niższy dla dróg nieutwardzonych niż dla dróg utwardzonych, a w przypadku rowerów górskich różnica będzie niewielka. 
+
+Czas przejazdu danego odcinka jest zatem obliczany jako:
+$$
+t(d, biketype, fitness, roadtype) = \frac{d}{v_b(biketype, fitness) \cdot ratio(biketype, roadtype)}
+$$
+
+gdzie:
+
+- $t$ - czas
+- $d$ - długość odcinka
+- $v_b$ - prędkość osiągana w korzystnych warunkach
+- $ration$ - współczynnik skalujący prędkość
+- $biketype$ - typ roweru
+- $raodtype$ - typ drogi
+- $fitness$ - poziom sprawności fizycznej.
+
+Ponieważ zapytanie do bazy danych zwraca dystans pokonywany drogami poszczególnych typów, możliwe jest obliczenie czasu potrzebnego na przejazd między każdą parą punktów na trasie. Tym samym, możliwe jest także obliczenie dystansu pokonywanego każdego dnia i zasugerowanie użytkownikowi modyfikacji trasy.
+
+### Dobór punktów zwiedzania
+
+TODO
+
+### Dobór noclegów
+
+TODO
+
 ### Użytkowanie 
+
+### Ograniczenia
+
+### Możliwości rozwoju
+
+- kolejność poi floyd warshall
