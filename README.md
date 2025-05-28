@@ -74,3 +74,9 @@ Count disconnected edges in the graph (should be exactly 0):
 ```sql
 SELECT pgr_analyzeGraph('ways', 0.000001, the_geom := 'the_geom', id := 'gid');
 ```
+
+Generate documentation:
+
+```shell
+pandoc -f markdown --pdf-engine=xelatex -V geometry:margin=1in -o docs.pdf docs/final_report/dokumentacja.md 
+```

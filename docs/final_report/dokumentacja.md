@@ -1,12 +1,8 @@
-# Kreator długodystansowych tras rowerowych​
-
-Przestrzenne Bazy Danych - projekt - realizacja 25L
-
-Krzysztof Fijałkowski
-
-Tomasz Owienko
-
-Jakub Woźniak
+---
+title: Kreator długodystansowych tras rowerowych​
+author: Krzysztof Fijałkowski, Tomasz Owienko, Jakub Woźniak
+date: 28.05.2025
+---
 
 ## Cel projektu
 
