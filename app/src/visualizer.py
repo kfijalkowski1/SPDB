@@ -425,16 +425,28 @@ with config_col:
                             import concurrent.futures
 
                             pois_bbox = get_max_bounds_from_routes([r for seg in segment_routes for r in seg])
+                            # st.session_state.suggested_pois = suggest_pois(pois_bbox) # todo remove
+                            st.session_state.selected_pois = set()
 
 
                             # Calculate day endpoints based on daily distance
                             all_routes = [route for seg in segment_routes for route in seg]
-                            day_endpoints = calculate_day_endpoints(all_routes, st.session_state.daily_m)
+                            daily_distance_m = st.session_state.daily_m
+                            day_endpoints = calculate_day_endpoints(all_routes, daily_distance_m)
 
                             # Find sleeping places for each day endpoint
                             all_sleeping_places = []
                             SLEEP_SEARCH_RADIUS_DEG = 0.1
 
+                            for endpoint in day_endpoints:
+                                sleep_bbox = (
+                                    float(endpoint.lat) - SLEEP_SEARCH_RADIUS_DEG,
+                                    float(endpoint.lon) - SLEEP_SEARCH_RADIUS_DEG,
+                                    float(endpoint.lat) + SLEEP_SEARCH_RADIUS_DEG,
+                                    float(endpoint.lon) + SLEEP_SEARCH_RADIUS_DEG,
+                                )
+                                # sleeping_places = suggest_sleeping_places(sleep_bbox)
+                                # all_sleeping_places.extend(sleeping_places)
                             with concurrent.futures.ThreadPoolExecutor() as executor:
                                 suggested_pois_future = executor.submit(suggest_pois, pois_bbox)
                                 future_sleep_places = {
@@ -473,11 +485,20 @@ with config_col:
 
                             st.success("Route generated successfully!")
                             st.rerun()
-                    except Exception as e:
-                        st.error(f"Error generating route: {str(e)}")
-                        print(e)
-                        print(traceback.format_exc())
-            # st.download_button("Download GPX", export_to_gpx(st.session_state.segment_routes, "route.gpx"),mime="application/gpx+xml")
+                        except Exception as e:
+                            st.error(f"Error generating route: {str(e)}")
+                            print(e)
+                            print(traceback.format_exc())
+            if st.session_state.segment_routes:
+                print("Downloading GPX")
+                # Flatten the segment routes into a single list of Route objects
+                all_routes = [route for seg in st.session_state.segment_routes for route in seg]
+                st.download_button(
+                    "Download GPX",
+                    export_to_gpx(all_routes, "route.gpx"),
+                    file_name="route.gpx",
+                    mime="application/gpx+xml"
+                )
 
     with tab2:
         if st.session_state.suggested_pois:

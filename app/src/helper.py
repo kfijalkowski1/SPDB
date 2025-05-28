@@ -9,7 +9,7 @@ from engine import Point, Route
 
 
 
-def calculate_day_endpoints(routes: list[Route], daily_distance_m: float) -> list[Point]:
+def calculate_day_endpoints(routes, daily_distance_m: float) -> list[Point]:
     """
     Calculate day endpoints based on daily distance limits.
 
@@ -20,31 +20,15 @@ def calculate_day_endpoints(routes: list[Route], daily_distance_m: float) -> lis
     Returns:
         List of Point objects representing end points for each day
     """
-    if not routes:
-        return []
-
+    day_distance = 0
     day_endpoints = []
-    current_day_distance = 0.0
-
-    for route in routes:
-        route_length = route.length_m
-
-        # If adding this entire route would exceed daily limit
-        if current_day_distance + route_length > daily_distance_m:
-            # Use the end of this route as the day endpoint
-            day_endpoints.append(route.end)
-            # Start new day with this route's length
-            current_day_distance = route_length
-        else:
-            # This route fits within current day
-            current_day_distance += route_length
-
-        # If we've completed a day's distance, reset for next day
-        if current_day_distance >= daily_distance_m:
-            # If we haven't already added an endpoint for this day, add the route end
-            if not day_endpoints or day_endpoints[-1] != route.end:
-                day_endpoints.append(route.end)
-            current_day_distance = 0.0
+    for segment in routes:
+        for route in segment:
+            for _, distance in route.length_m_road_types.items():
+                day_distance += distance
+                if day_distance >= daily_distance_m:
+                    day_endpoints.append(route.end)
+                    day_distance = 0
 
     return day_endpoints
 
