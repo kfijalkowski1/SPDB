@@ -522,7 +522,6 @@ with config_col:
 if map_data and map_data.get("last_clicked"):
     click_latlon = (map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"])
 
-    # Handle user point placement
     if st.session_state.choosing_point_idx is not None:
         db_point = get_closest_point(Point(*click_latlon))
         desc = f"Waypoint #{len(st.session_state.points) + 1}"
@@ -537,18 +536,7 @@ if map_data and map_data.get("last_clicked"):
         st.rerun()
 
     else:
-        # Check for nearby POI
-        nearby_poi = find_nearby(click_latlon, st.session_state.suggested_pois or [])
-        if nearby_poi:
-            new_poi = Point(nearby_poi.lat, nearby_poi.lon, nearby_poi.short_desc, type="poi")
-            st.session_state.points = insert_multiple_points_logically(
-                st.session_state.points,
-                [new_poi]
-            )
-            st.session_state.suggested_pois.remove(nearby_poi)
-            st.rerun()
-
-        # Check for nearby sleeping place
+        # Check for nearby sleeping place first
         nearby_sleep = find_nearby(click_latlon, st.session_state.suggested_sleeping or [])
         if nearby_sleep:
             new_sleep = Point(
@@ -563,5 +551,18 @@ if map_data and map_data.get("last_clicked"):
             )
             st.session_state.suggested_sleeping.remove(nearby_sleep)
             st.rerun()
+
+        else:
+            # Then check for nearby POI
+            nearby_poi = find_nearby(click_latlon, st.session_state.suggested_pois or [])
+            if nearby_poi:
+                new_poi = Point(nearby_poi.lat, nearby_poi.lon, nearby_poi.short_desc, type="poi")
+                st.session_state.points = insert_multiple_points_logically(
+                    st.session_state.points,
+                    [new_poi]
+                )
+                st.session_state.suggested_pois.remove(nearby_poi)
+                st.rerun()
+
 
 
